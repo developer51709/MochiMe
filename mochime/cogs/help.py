@@ -157,7 +157,7 @@ class Help(commands.Cog):
         components = view.build_components()
         await ctx.send(
             components=components,
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="ping", description="Check the bot's latency")
@@ -174,7 +174,7 @@ class Help(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="about", description="About MochiMe")
@@ -206,7 +206,7 @@ class Help(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="info", description="Show server information")
@@ -234,7 +234,7 @@ class Help(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
 

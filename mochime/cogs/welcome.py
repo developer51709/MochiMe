@@ -218,7 +218,7 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
         )
         await interaction.followup.send(
             components=[info],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
             ephemeral=True,
         )
 
@@ -337,7 +337,7 @@ class Welcome(commands.Cog):
         try:
             await channel.send(
                 components=[container],
-                flags=discord.MessageFlags(is_components_v2=True),
+                flags=discord.MessageFlags(components_v2=True),
             )
             log.info("Sent guild-join intro to #%s in %s", channel.name, guild.name)
         except discord.Forbidden:
@@ -380,7 +380,7 @@ class Welcome(commands.Cog):
         try:
             await channel.send(
                 components=[card],
-                flags=discord.MessageFlags(is_components_v2=True),
+                flags=discord.MessageFlags(components_v2=True),
             )
         except discord.Forbidden:
             log.warning(
@@ -424,7 +424,7 @@ class Welcome(commands.Cog):
             )
             await ctx.send(
                 components=[prompt],
-                flags=discord.MessageFlags(is_components_v2=True),
+                flags=discord.MessageFlags(components_v2=True),
                 view=view,
             )
 
@@ -456,7 +456,7 @@ class Welcome(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     # ── setwelcomeimage (slash-only — discord.Attachment upload) ─────────────
@@ -485,7 +485,7 @@ class Welcome(commands.Cog):
             )
             await interaction.response.send_message(
                 components=[err],
-                flags=discord.MessageFlags(is_components_v2=True),
+                flags=discord.MessageFlags(components_v2=True),
                 ephemeral=True,
             )
             return
@@ -511,7 +511,7 @@ class Welcome(commands.Cog):
         )
         await interaction.response.send_message(
             components=[confirm],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
             ephemeral=True,
         )
         log.info(
@@ -560,7 +560,7 @@ class Welcome(commands.Cog):
         )
         await ctx.send(
             components=[wrapper],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     # ── togglewelcome ─────────────────────────────────────────────────────────
@@ -598,7 +598,7 @@ class Welcome(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
 

@@ -100,7 +100,7 @@ class MochiMe(commands.Bot):
             )
             await ctx.send(
                 components=[container],
-                flags=discord.MessageFlags(is_components_v2=True),
+                flags=discord.MessageFlags(components_v2=True),
             )
             return
         log.error("Unhandled error in command %s: %s", ctx.command, error)

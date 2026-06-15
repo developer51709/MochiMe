@@ -77,7 +77,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="settings", description="Configure MochiMe for this server")
@@ -104,7 +104,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="setrp", description="Set the RP channel")
@@ -127,7 +127,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="setlog", description="Set the moderation log channel")
@@ -150,7 +150,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="setmodrole", description="Set the moderator role")
@@ -171,7 +171,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="cosmetics", description="Browse server cosmetics")
@@ -194,7 +194,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="pets", description="Browse server-bound pets")
@@ -217,7 +217,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
 

@@ -174,7 +174,7 @@ class RP(commands.Cog):
         )
         await interaction.response.send_message(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     async def _ctx_hug(self, interaction: discord.Interaction, member: discord.Member) -> None:
@@ -212,7 +212,7 @@ class RP(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="hug", description="Give someone a warm hug! 🫂")

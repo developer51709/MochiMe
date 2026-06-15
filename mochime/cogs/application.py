@@ -86,7 +86,7 @@ class Application(commands.Cog):
         )
         await interaction.response.send_message(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
             ephemeral=True,
         )
 
@@ -141,7 +141,7 @@ class Application(commands.Cog):
         )
         await interaction.response.send_message(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
             ephemeral=True,
         )
 
@@ -163,7 +163,7 @@ class Application(commands.Cog):
                 )
                 await interaction.response.send_message(
                     components=[container],
-                    flags=discord.MessageFlags(is_components_v2=True),
+                    flags=discord.MessageFlags(components_v2=True),
                     ephemeral=True,
                 )
                 return
@@ -200,7 +200,7 @@ class Application(commands.Cog):
         )
         await interaction.response.send_message(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
             ephemeral=True,
         )
 
@@ -241,7 +241,7 @@ class Application(commands.Cog):
         )
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
 

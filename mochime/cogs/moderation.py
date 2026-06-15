@@ -127,7 +127,7 @@ class Moderation(commands.Cog):
         return await ctx.send(
             components=components,
             view=view,
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
     @commands.hybrid_command(name="ban", description="Ban a member from the server")
@@ -294,7 +294,7 @@ class Moderation(commands.Cog):
                 )
                 await target.send(
                     components=[dm_container],
-                    flags=discord.MessageFlags(is_components_v2=True),
+                    flags=discord.MessageFlags(components_v2=True),
                 )
             except discord.Forbidden:
                 pass
@@ -333,7 +333,7 @@ class Moderation(commands.Cog):
 
         await ctx.send(
             components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
+            flags=discord.MessageFlags(components_v2=True),
         )
 
 
