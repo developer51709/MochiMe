@@ -42,12 +42,17 @@ async def init_db() -> None:
         );
 
         CREATE TABLE IF NOT EXISTS server_settings (
-            guild_id        TEXT PRIMARY KEY,
-            rp_channel_id   TEXT,
-            log_channel_id  TEXT,
-            mod_role_id     TEXT,
-            welcome_enabled INTEGER NOT NULL DEFAULT 0,
-            created_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+            guild_id          TEXT PRIMARY KEY,
+            rp_channel_id     TEXT,
+            log_channel_id    TEXT,
+            mod_role_id       TEXT,
+            welcome_enabled   INTEGER NOT NULL DEFAULT 0,
+            welcome_channel_id TEXT,
+            welcome_title     TEXT,
+            welcome_message   TEXT,
+            welcome_image_url TEXT,
+            welcome_color     TEXT,
+            created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
         );
 
         CREATE TABLE IF NOT EXISTS rp_stats (
@@ -59,6 +64,22 @@ async def init_db() -> None:
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
     """)
+    await db.commit()
+
+    # ── schema migrations for existing databases ───────────────────────────
+    # SQLite has no ADD COLUMN IF NOT EXISTS; wrap each ALTER in try/except.
+    _migrations = [
+        "ALTER TABLE server_settings ADD COLUMN welcome_channel_id TEXT",
+        "ALTER TABLE server_settings ADD COLUMN welcome_title TEXT",
+        "ALTER TABLE server_settings ADD COLUMN welcome_message TEXT",
+        "ALTER TABLE server_settings ADD COLUMN welcome_image_url TEXT",
+        "ALTER TABLE server_settings ADD COLUMN welcome_color TEXT",
+    ]
+    for stmt in _migrations:
+        try:
+            await db.execute(stmt)
+        except Exception:
+            pass  # column already exists
     await db.commit()
 
 

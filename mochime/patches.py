@@ -2,8 +2,16 @@
 patches.py — Runtime monkey-patches for stale discord.py behaviour.
 
 Applied once in bot.py before any cog is loaded.
+
+Patches
+  1. CommandTree.add_command   — context-menu limit 5 → 12 (Discord's real limit)
+  2. discord.ui.AttachmentInput — new class not in discord.py; added to discord.ui
+                                   namespace so Modal subclasses can use it as a
+                                   TextInput that validates image URLs.
 """
 from __future__ import annotations
+
+import discord
 
 import console
 
@@ -13,6 +21,8 @@ log = console.get_logger("mochime.patches")
 # discord.py 2.x still enforces the stale limit of 5; patch it to 12.
 DISCORD_REAL_LIMIT = 12
 
+
+# ─── patch 1: context-menu limit ──────────────────────────────────────────────
 
 def _patch_context_menu_limit() -> bool:
     """
@@ -37,7 +47,6 @@ def _patch_context_menu_limit() -> bool:
     except ImportError:
         return False
 
-    # Guard: don't double-patch across hot-reloads
     if getattr(CommandTree.add_command, "_mochime_patched", False):
         return False
 
@@ -55,11 +64,9 @@ def _patch_context_menu_limit() -> bool:
         try:
             return _original(self, command, guild=guild, guilds=guilds, override=override)
         except CommandLimitReached as exc:
-            # Only intercept the stale context-menu limit of 5.
             if exc.limit != 5 or not isinstance(command, ContextMenu):
                 raise
 
-            # Count how many of this type are already registered globally.
             type_val = command.type.value
             total = sum(
                 1
@@ -68,14 +75,12 @@ def _patch_context_menu_limit() -> bool:
             )
 
             if total < DISCORD_REAL_LIMIT:
-                # Within Discord's real limit — bypass and add directly.
                 key = (command.name, None, type_val)
                 if key in self._context_menus and not override:
                     raise CommandAlreadyRegistered(command.name, None)
                 self._context_menus[key] = command
                 return
 
-            # Genuinely over the real limit — re-raise with correct number.
             raise CommandLimitReached(
                 guild_id=None,
                 limit=DISCORD_REAL_LIMIT,
@@ -88,8 +93,90 @@ def _patch_context_menu_limit() -> bool:
     return True
 
 
+# ─── patch 2: AttachmentInput ──────────────────────────────────────────────────
+#
+# discord.py has no discord.ui.AttachmentInput class.  We add one here at
+# *module-import time* (not inside apply_all) so that Modal subclasses which
+# reference discord.ui.AttachmentInput at class-body evaluation time — i.e.
+# cogs/welcome.py — find it as soon as `import patches` executes.
+#
+# AttachmentInput is a TextInput subclass and therefore works inside any
+# discord.ui.Modal without further patching.  The "attachment" behaviour is
+# purely client-side: it validates that the submitted value is a direct image
+# URL and exposes image_url / error_message helpers.
+
+class AttachmentInput(discord.ui.TextInput):
+    """
+    A discord.ui.TextInput subclass that validates its value as a direct
+    image URL.  Use it as a field inside a discord.ui.Modal exactly like
+    a normal TextInput.
+
+    discord.py has no built-in AttachmentInput; this class is the runtime
+    patch that adds the concept.  The complementary `/setwelcomeimage` slash
+    command accepts a real discord.Attachment for file-upload flows.
+
+    Properties
+      image_url     — validated URL or None if empty / invalid
+      error_message — human-readable failure string or None if valid
+    """
+
+    _IMAGE_EXTS: tuple[str, ...] = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+    _TRUSTED_HOSTS: tuple[str, ...] = (
+        "cdn.discordapp.com",
+        "media.discordapp.net",
+        "i.imgur.com",
+        "i.ibb.co",
+        "tenor.com",
+        "giphy.com",
+    )
+
+    def __init__(self, **kwargs) -> None:
+        kwargs.setdefault("label", "Banner Image URL (optional)")
+        kwargs.setdefault(
+            "placeholder",
+            "https://  — paste a direct image link (.png .jpg .gif .webp)",
+        )
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("max_length", 500)
+        super().__init__(**kwargs)
+
+    @property
+    def image_url(self) -> str | None:
+        """Returns the validated URL, or None if the field is empty or invalid."""
+        val = (self.value or "").strip()
+        if not val:
+            return None
+        return val if self._is_valid(val) else None
+
+    @classmethod
+    def _is_valid(cls, url: str) -> bool:
+        if not url.startswith("https://"):
+            return False
+        path = url.lower().split("?")[0].split("#")[0]
+        if any(path.endswith(ext) for ext in cls._IMAGE_EXTS):
+            return True
+        return any(host in url for host in cls._TRUSTED_HOSTS)
+
+    def error_message(self) -> str | None:
+        """Returns a human-readable error string, or None if the value is valid."""
+        val = (self.value or "").strip()
+        if not val:
+            return None
+        if not val.startswith("https://"):
+            return "Image URL must start with https://"
+        if not self._is_valid(val):
+            return "Please provide a direct image URL (.png .jpg .gif .webp)"
+        return None
+
+
+# Expose in discord.ui namespace so code can write `discord.ui.AttachmentInput`
+discord.ui.AttachmentInput = AttachmentInput  # type: ignore[attr-defined]
+
+
+# ─── apply_all ────────────────────────────────────────────────────────────────
+
 def apply_all() -> None:
-    """Apply every registered patch. Call this before loading any cog."""
+    """Apply every registered patch.  Call once before loading any cog."""
     if _patch_context_menu_limit():
         log.info(
             "Patched CommandTree.add_command — context-menu limit 5 → %d",
@@ -97,6 +184,8 @@ def apply_all() -> None:
         )
     else:
         log.info(
-            "Context-menu limit patch not needed (already ≥ %d or already patched)",
-            DISCORD_REAL_LIMIT,
+            "Context-menu limit patch not needed (already patched or not required)"
         )
+
+    # AttachmentInput is already attached at module level; just confirm.
+    log.info("discord.ui.AttachmentInput registered (%s)", AttachmentInput.__name__)

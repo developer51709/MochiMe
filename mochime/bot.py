@@ -18,6 +18,7 @@ COGS = [
     "cogs.moderation",
     "cogs.application",
     "cogs.server_features",
+    "cogs.welcome",
 ]
 
 log = console.get_logger("mochime")
