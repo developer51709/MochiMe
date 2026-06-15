@@ -11,8 +11,23 @@ import config
 import database
 from cogs.emoji_loader import EmojiLoader
 
-# waifu.pics — free, no-auth public GIF API (static image assets only)
+# nekos.best — free, no-auth anime GIF API (primary)
+# https://nekos.best/api/v2/{action}  →  {"results": [{"url": "...", ...}]}
+NEKOS_BEST_BASE = "https://nekos.best/api/v2/{action}"
+
+# waifu.pics — fallback
 WAIFU_PICS_BASE = "https://api.waifu.pics/sfw/{action}"
+
+# nekos.best uses different names for some actions
+_NEKOS_ACTION_MAP: dict[str, str] = {
+    "hug":    "hug",
+    "pat":    "pat",
+    "kiss":   "kiss",
+    "bonk":   "slap",    # nekos.best has no bonk; slap is closest
+    "blush":  "blush",
+    "cuddle": "cuddle",
+    "poke":   "poke",
+}
 
 RP_LINES: dict[str, list[str]] = {
     "hug": [
@@ -81,16 +96,37 @@ RP_EMOJI_KEYS: dict[str, str] = {
 
 
 async def _fetch_gif(action: str) -> str | None:
-    """Fetch an animated GIF URL from waifu.pics (free public static image service)."""
-    try:
-        async with aiohttp.ClientSession() as session:
+    """
+    Fetch an animated GIF URL for the given RP action.
+
+    Tries nekos.best first (primary), then waifu.pics (fallback).
+    Returns None if both fail so the card still renders without a GIF.
+    """
+    nekos_action = _NEKOS_ACTION_MAP.get(action, action)
+
+    async with aiohttp.ClientSession() as session:
+        # ── primary: nekos.best ──────────────────────────────────────────────
+        try:
+            url = NEKOS_BEST_BASE.format(action=nekos_action)
+            async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    results = data.get("results", [])
+                    if results:
+                        return results[0].get("url")
+        except Exception:
+            pass
+
+        # ── fallback: waifu.pics ─────────────────────────────────────────────
+        try:
             url = WAIFU_PICS_BASE.format(action=action)
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
                 if resp.status == 200:
                     data = await resp.json()
                     return data.get("url")
-    except Exception:
-        pass
+        except Exception:
+            pass
+
     return None
 
 

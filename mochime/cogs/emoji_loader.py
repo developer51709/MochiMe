@@ -70,15 +70,13 @@ CDN_BASE = (
 
 # ── PNG conversion ────────────────────────────────────────────────────────────
 
-# Pastel palette used for the Pillow fallback icons (6 swatches)
-_PALETTE: list[tuple[int, int, int]] = [
-    (255, 182, 193),  # pink
-    (201, 177, 255),  # purple
-    (179, 217, 255),  # blue
-    (179, 255, 217),  # green
-    (255, 245, 179),  # yellow
-    (255, 205, 179),  # peach
-]
+# Pink tint applied to every Phosphor SVG before rasterisation.
+# Phosphor icons use fill="currentColor"; we replace that token so cairosvg
+# renders the icon in this colour instead of black.
+_ICON_COLOR = "#E879A8"
+
+# Pillow fallback circle colour (used only when cairosvg is unavailable)
+_PALETTE_PINK: tuple[int, int, int] = (232, 121, 168)  # matches _ICON_COLOR
 
 # Check cairosvg availability once at import time
 _HAS_CAIRO: bool = False
@@ -99,20 +97,17 @@ except ImportError:
 
 def _pillow_icon(name: str, size: int = 128) -> bytes:
     """
-    Create a pastel circle PNG using Pillow.
+    Create a pink circle PNG using Pillow.
     Used when cairosvg is not available or conversion fails.
     """
     from PIL import Image, ImageDraw  # noqa: PLC0415
 
-    bg = _PALETTE[abs(hash(name)) % len(_PALETTE)]
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
 
-    # Outer circle (pastel background)
     pad = 4
-    draw.ellipse((pad, pad, size - pad - 1, size - pad - 1), fill=(*bg, 255))
+    draw.ellipse((pad, pad, size - pad - 1, size - pad - 1), fill=(*_PALETTE_PINK, 255))
 
-    # Inner highlight ring (adds depth)
     ip = size // 3
     draw.ellipse(
         (ip, ip, size - ip - 1, size - ip - 1),
@@ -124,19 +119,26 @@ def _pillow_icon(name: str, size: int = 128) -> bytes:
     return buf.getvalue()
 
 
+def _tint_svg(svg_bytes: bytes) -> bytes:
+    """Replace currentColor with _ICON_COLOR so icons render pink."""
+    return svg_bytes.replace(b"currentColor", _ICON_COLOR.encode())
+
+
 def _svg_to_png(svg_bytes: bytes, name: str, size: int = 128) -> bytes:
     """
-    Convert SVG bytes → PNG bytes.
+    Convert SVG bytes → PNG bytes (pink-tinted).
 
     Priority:
       1. cairosvg  — perfect vector fidelity (needs libcairo system package)
-      2. Pillow    — pastel circle placeholder (pure-Python, always available)
+      2. Pillow    — pink circle placeholder (pure-Python, always available)
       3. Minimal 1×1 transparent PNG — absolute last resort
     """
+    tinted = _tint_svg(svg_bytes)
+
     if _HAS_CAIRO:
         try:
             return _cairosvg.svg2png(  # type: ignore[union-attr]
-                bytestring=svg_bytes,
+                bytestring=tinted,
                 output_width=size,
                 output_height=size,
             )
@@ -171,6 +173,18 @@ class EmojiLoader(commands.Cog):
     async def on_ready(self) -> None:
         await self._load_cached_emojis()
         await self._download_missing_svgs()
+
+        # Detect a color refresh: DB has IDs from a previous registration but
+        # PNGs were deleted (e.g. to force a re-tint).  Clear the stale Discord
+        # emojis and DB entries so they get re-uploaded with the new color.
+        phosphor_dir = Path(config.PHOSPHOR_DIR)
+        pngs_missing = not any(
+            (phosphor_dir / f"{name}.png").exists() for name in PHOSPHOR_ICONS
+        )
+        if pngs_missing and self.cache:
+            log.info("Color refresh detected — clearing stale Discord emojis…")
+            await self._clear_discord_emojis()
+
         await self._convert_missing_pngs()
         await self._register_missing_emojis()
 
@@ -251,8 +265,8 @@ class EmojiLoader(commands.Cog):
                 skipped += 1
 
         if converted:
-            method = "cairosvg" if _HAS_CAIRO else "Pillow (pastel icons)"
-            log.info("Converted %d SVGs → PNG via %s", converted, method)
+            method = "cairosvg" if _HAS_CAIRO else "Pillow (pink circle icons)"
+            log.info("Converted %d SVGs → PNG (pink) via %s", converted, method)
         if skipped:
             log.debug("Skipped %d icons (no SVG source)", skipped)
 
@@ -316,6 +330,46 @@ class EmojiLoader(commands.Cog):
                 "%d emoji(s) rejected by Discord: %s",
                 len(failed), ", ".join(failed),
             )
+
+    async def _clear_discord_emojis(self) -> None:
+        """
+        Delete every registered app emoji from Discord and wipe the DB cache.
+        Called when PNGs are missing but the DB still holds old emoji IDs,
+        which means we need to re-upload everything with a new icon color.
+        """
+        app_id = self.bot.application_id
+        if app_id is None:
+            return
+
+        headers = {
+            "Authorization": f"Bot {config.BOT_TOKEN}",
+            "Content-Type": "application/json",
+        }
+
+        deleted = 0
+        async with aiohttp.ClientSession() as session:
+            for name, emoji_id in list(self.cache.items()):
+                try:
+                    async with session.delete(
+                        f"https://discord.com/api/v10/applications/{app_id}/emojis/{emoji_id}",
+                        headers=headers,
+                    ) as resp:
+                        if resp.status in (200, 204):
+                            deleted += 1
+                        else:
+                            log.debug(
+                                "Failed to delete emoji %s (%s): HTTP %d",
+                                name, emoji_id, resp.status,
+                            )
+                except Exception as exc:
+                    log.debug("Error deleting emoji %s: %s", name, exc)
+
+        # Clear in-memory cache and DB
+        self.cache.clear()
+        db = await database.get_db()
+        await db.execute("DELETE FROM emojis")
+        await db.commit()
+        log.info("Cleared %d Discord app emojis for color refresh", deleted)
 
     async def _fetch_existing_emojis(
         self,
