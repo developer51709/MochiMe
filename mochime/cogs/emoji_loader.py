@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import base64
-import os
+import io
 from pathlib import Path
 
 import aiohttp
@@ -17,50 +17,50 @@ log = console.get_logger("cogs.emoji_loader")
 # Map internal name → official Phosphor icon filename (regular weight)
 # Source: https://github.com/phosphor-icons/core/tree/main/assets/regular
 PHOSPHOR_ICONS: dict[str, str] = {
-    "heart":        "heart",
-    "star":         "star",
-    "shield":       "shield",
-    "info":         "info",
-    "warning":      "warning-circle",
-    "user":         "user",
-    "smiley":       "smiley",
-    "sparkle":      "sparkle",
-    "check":        "check-circle",
-    "cross":        "x-circle",
-    "flower":       "flower",
-    "moon":         "moon",
-    "chat":         "chat-circle",
-    "crown":        "crown",
-    "wave":         "hand-waving",
-    "ban":          "hammer",
-    "kick":         "boot",
-    "mute":         "speaker-slash",
-    "warn":         "warning-circle",
-    "settings":     "gear",
-    "lock":         "lock",
-    "pin":          "push-pin",
-    "pencil":       "pencil",
-    "music":        "music-note",
-    "hug":          "person-arms-spread",
-    "pat":          "hand",
-    "kiss":         "heart-straight",
-    "bonk":         "hammer",
-    "blush":        "smiley-wink",
-    "cuddle":       "couch",
-    "poke":         "hand-pointing",
-    "ribbon":       "gift",
-    "cake":         "cake",
-    "bow":          "hand-heart",
-    "bell":         "bell",
-    "confetti":     "confetti",
-    "wand":         "magic-wand",
-    "book":         "book-open",
-    "bolt":         "lightning",
-    "eye":          "eye",
-    "trash":        "trash",
-    "add":          "plus-circle",
-    "remove":       "minus-circle",
-    "trophy":       "trophy",
+    "heart":    "heart",
+    "star":     "star",
+    "shield":   "shield",
+    "info":     "info",
+    "warning":  "warning-circle",
+    "user":     "user",
+    "smiley":   "smiley",
+    "sparkle":  "sparkle",
+    "check":    "check-circle",
+    "cross":    "x-circle",
+    "flower":   "flower",
+    "moon":     "moon",
+    "chat":     "chat-circle",
+    "crown":    "crown",
+    "wave":     "hand-waving",
+    "ban":      "hammer",
+    "kick":     "boot",
+    "mute":     "speaker-slash",
+    "warn":     "warning-circle",
+    "settings": "gear",
+    "lock":     "lock",
+    "pin":      "push-pin",
+    "pencil":   "pencil",
+    "music":    "music-note",
+    "hug":      "person-arms-spread",
+    "pat":      "hand",
+    "kiss":     "heart-straight",
+    "bonk":     "hammer",
+    "blush":    "smiley-wink",
+    "cuddle":   "couch",
+    "poke":     "hand-pointing",
+    "ribbon":   "gift",
+    "cake":     "cake",
+    "bow":      "hand-heart",
+    "bell":     "bell",
+    "confetti": "confetti",
+    "wand":     "magic-wand",
+    "book":     "book-open",
+    "bolt":     "lightning",
+    "eye":      "eye",
+    "trash":    "trash",
+    "add":      "plus-circle",
+    "remove":   "minus-circle",
+    "trophy":   "trophy",
 }
 
 CDN_BASE = (
@@ -68,9 +68,100 @@ CDN_BASE = (
     "/main/assets/regular/{name}.svg"
 )
 
+# ── PNG conversion ────────────────────────────────────────────────────────────
+
+# Pastel palette used for the Pillow fallback icons (6 swatches)
+_PALETTE: list[tuple[int, int, int]] = [
+    (255, 182, 193),  # pink
+    (201, 177, 255),  # purple
+    (179, 217, 255),  # blue
+    (179, 255, 217),  # green
+    (255, 245, 179),  # yellow
+    (255, 205, 179),  # peach
+]
+
+# Check cairosvg availability once at import time
+_HAS_CAIRO: bool = False
+try:
+    import cairosvg as _cairosvg
+    _HAS_CAIRO = True
+except ImportError:
+    pass
+
+# Check Pillow availability once at import time
+_HAS_PILLOW: bool = False
+try:
+    from PIL import Image as _Image, ImageDraw as _ImageDraw
+    _HAS_PILLOW = True
+except ImportError:
+    pass
+
+
+def _pillow_icon(name: str, size: int = 128) -> bytes:
+    """
+    Create a pastel circle PNG using Pillow.
+    Used when cairosvg is not available or conversion fails.
+    """
+    from PIL import Image, ImageDraw  # noqa: PLC0415
+
+    bg = _PALETTE[abs(hash(name)) % len(_PALETTE)]
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    # Outer circle (pastel background)
+    pad = 4
+    draw.ellipse((pad, pad, size - pad - 1, size - pad - 1), fill=(*bg, 255))
+
+    # Inner highlight ring (adds depth)
+    ip = size // 3
+    draw.ellipse(
+        (ip, ip, size - ip - 1, size - ip - 1),
+        fill=(255, 255, 255, 55),
+    )
+
+    buf = io.BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+def _svg_to_png(svg_bytes: bytes, name: str, size: int = 128) -> bytes:
+    """
+    Convert SVG bytes → PNG bytes.
+
+    Priority:
+      1. cairosvg  — perfect vector fidelity (needs libcairo system package)
+      2. Pillow    — pastel circle placeholder (pure-Python, always available)
+      3. Minimal 1×1 transparent PNG — absolute last resort
+    """
+    if _HAS_CAIRO:
+        try:
+            return _cairosvg.svg2png(  # type: ignore[union-attr]
+                bytestring=svg_bytes,
+                output_width=size,
+                output_height=size,
+            )
+        except Exception as exc:
+            log.debug("cairosvg failed for %s: %s — trying Pillow", name, exc)
+
+    if _HAS_PILLOW:
+        try:
+            return _pillow_icon(name, size)
+        except Exception as exc:
+            log.debug("Pillow fallback failed for %s: %s", name, exc)
+
+    # Absolute last resort: 1×1 transparent PNG (valid, but invisible)
+    return (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01"
+        b"\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+
+
+# ── Cog ──────────────────────────────────────────────────────────────────────
 
 class EmojiLoader(commands.Cog):
-    """Downloads real Phosphor SVGs and registers them as application emojis."""
+    """Downloads Phosphor SVGs, converts them to PNG, and registers app emojis."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -80,7 +171,10 @@ class EmojiLoader(commands.Cog):
     async def on_ready(self) -> None:
         await self._load_cached_emojis()
         await self._download_missing_svgs()
+        await self._convert_missing_pngs()
         await self._register_missing_emojis()
+
+    # ── Step 1: load from DB cache ──────────────────────────────────────────
 
     async def _load_cached_emojis(self) -> None:
         db = await database.get_db()
@@ -88,6 +182,8 @@ class EmojiLoader(commands.Cog):
             async for row in cur:
                 self.cache[row["name"]] = row["emoji_id"]
         log.info("Loaded %d cached emoji IDs from DB", len(self.cache))
+
+    # ── Step 2: download SVGs ───────────────────────────────────────────────
 
     async def _download_missing_svgs(self) -> None:
         phosphor_dir = Path(config.PHOSPHOR_DIR)
@@ -100,13 +196,10 @@ class EmojiLoader(commands.Cog):
         ]
 
         if not to_download:
-            log.info("All %d Phosphor SVGs already downloaded", len(PHOSPHOR_ICONS))
+            log.info("All %d Phosphor SVGs already on disk", len(PHOSPHOR_ICONS))
             return
 
-        log.info(
-            "Downloading %d Phosphor SVGs from phosphoricons.com CDN…",
-            len(to_download),
-        )
+        log.info("Downloading %d Phosphor SVGs…", len(to_download))
         downloaded = 0
         failed: list[str] = []
 
@@ -118,8 +211,9 @@ class EmojiLoader(commands.Cog):
                         url, timeout=aiohttp.ClientTimeout(total=10)
                     ) as resp:
                         if resp.status == 200:
-                            svg_bytes = await resp.read()
-                            (phosphor_dir / f"{internal}.svg").write_bytes(svg_bytes)
+                            (phosphor_dir / f"{internal}.svg").write_bytes(
+                                await resp.read()
+                            )
                             downloaded += 1
                         else:
                             failed.append(internal)
@@ -128,7 +222,41 @@ class EmojiLoader(commands.Cog):
 
         log.info("Downloaded %d/%d SVGs", downloaded, len(to_download))
         if failed:
-            log.warning("Failed to download: %s — Unicode fallbacks active", ", ".join(failed))
+            log.warning("SVG download failed for: %s", ", ".join(failed))
+
+    # ── Step 3: convert SVGs → PNGs ─────────────────────────────────────────
+
+    async def _convert_missing_pngs(self) -> None:
+        """Convert any SVG that doesn't yet have a matching .png file."""
+        phosphor_dir = Path(config.PHOSPHOR_DIR)
+        converted = 0
+        skipped = 0
+
+        for internal in PHOSPHOR_ICONS:
+            svg_path = phosphor_dir / f"{internal}.svg"
+            png_path = phosphor_dir / f"{internal}.png"
+
+            if png_path.exists():
+                continue
+            if not svg_path.exists():
+                skipped += 1
+                continue
+
+            try:
+                png_bytes = _svg_to_png(svg_path.read_bytes(), internal)
+                png_path.write_bytes(png_bytes)
+                converted += 1
+            except Exception as exc:
+                log.warning("PNG conversion failed for %s: %s", internal, exc)
+                skipped += 1
+
+        if converted:
+            method = "cairosvg" if _HAS_CAIRO else "Pillow (pastel icons)"
+            log.info("Converted %d SVGs → PNG via %s", converted, method)
+        if skipped:
+            log.debug("Skipped %d icons (no SVG source)", skipped)
+
+    # ── Step 4: register with Discord ──────────────────────────────────────
 
     async def _register_missing_emojis(self) -> None:
         phosphor_dir = Path(config.PHOSPHOR_DIR)
@@ -143,26 +271,25 @@ class EmojiLoader(commands.Cog):
         }
 
         registered = 0
-        failed = 0
+        failed: list[str] = []
 
         async with aiohttp.ClientSession() as session:
-            existing_names = await self._fetch_existing_emoji_names(
-                session, app_id, headers
-            )
+            existing = await self._fetch_existing_emojis(session, app_id, headers)
 
             for internal in PHOSPHOR_ICONS:
-                if internal in self.cache or internal in existing_names:
+                if internal in self.cache or internal in existing:
                     continue
 
-                svg_path = phosphor_dir / f"{internal}.svg"
-                if not svg_path.exists():
+                png_path = phosphor_dir / f"{internal}.png"
+                if not png_path.exists():
                     continue
 
-                svg_bytes = svg_path.read_bytes()
-                b64 = base64.b64encode(svg_bytes).decode()
-                image_data = f"data:image/svg+xml;base64,{b64}"
+                b64 = base64.b64encode(png_path.read_bytes()).decode()
+                payload = {
+                    "name": internal,
+                    "image": f"data:image/png;base64,{b64}",
+                }
 
-                payload = {"name": internal, "image": image_data}
                 async with session.post(
                     f"https://discord.com/api/v10/applications/{app_id}/emojis",
                     json=payload,
@@ -175,17 +302,22 @@ class EmojiLoader(commands.Cog):
                         await database.set_emoji(internal, emoji_id)
                         registered += 1
                     else:
-                        failed += 1
+                        body = await resp.text()
+                        log.debug(
+                            "Emoji upload failed for %s: HTTP %d — %s",
+                            internal, resp.status, body[:120],
+                        )
+                        failed.append(internal)
 
         if registered:
             log.info("Registered %d new application emojis", registered)
         if failed:
             log.warning(
-                "%d SVGs rejected (Discord requires PNG) — Unicode fallbacks active",
-                failed,
+                "%d emoji(s) rejected by Discord: %s",
+                len(failed), ", ".join(failed),
             )
 
-    async def _fetch_existing_emoji_names(
+    async def _fetch_existing_emojis(
         self,
         session: aiohttp.ClientSession,
         app_id: int,
@@ -209,6 +341,8 @@ class EmojiLoader(commands.Cog):
         except Exception:
             pass
         return names
+
+    # ── Public helper ───────────────────────────────────────────────────────
 
     def get(self, name: str) -> str:
         """Return a formatted application emoji string, or Unicode fallback."""

@@ -19,6 +19,13 @@ REQUIRED_PACKAGES = [
     "discord.py>=2.4.0",
     "aiosqlite>=0.20.0",
     "aiohttp>=3.9.0",
+    "Pillow>=10.0.0",
+]
+
+# cairosvg gives perfect SVG→PNG fidelity but needs libcairo on the system.
+# We attempt it as an optional install and skip silently if it fails.
+OPTIONAL_PACKAGES = [
+    "cairosvg>=2.7.0",
 ]
 
 MIN_PYTHON = (3, 10)
@@ -179,12 +186,26 @@ def install_packages(pip_cmd: list[str], env: Env) -> bool:
     print()
 
     result = subprocess.run(cmd)
-    if result.returncode == 0:
-        _ok("All packages installed successfully")
-        return True
+    if result.returncode != 0:
+        _fail("pip install failed — see output above for details")
+        return False
 
-    _fail("pip install failed — see output above for details")
-    return False
+    _ok("Required packages installed successfully")
+
+    # Optional: cairosvg for perfect SVG→PNG emoji conversion.
+    # Needs libcairo on the system; skip silently if it fails.
+    _info("Attempting optional install: cairosvg (better emoji quality)…")
+    if env.is_termux:
+        _info("  Termux tip: run  pkg install cairo  first for cairosvg support")
+
+    opt_cmd = pip_cmd + ["install", "--upgrade"] + extra_args + OPTIONAL_PACKAGES
+    opt_result = subprocess.run(opt_cmd, capture_output=True, text=True)
+    if opt_result.returncode == 0:
+        _ok("cairosvg installed — emojis will use real Phosphor vectors")
+    else:
+        _warn("cairosvg skipped — Pillow pastel-circle fallback will be used instead")
+
+    return True
 
 
 # ──────────────────────────────────────────
@@ -192,13 +213,17 @@ def install_packages(pip_cmd: list[str], env: Env) -> bool:
 # ──────────────────────────────────────────
 
 def verify_imports() -> bool:
-    checks = [
+    required = [
         ("discord",    "discord.py"),
         ("aiosqlite",  "aiosqlite"),
         ("aiohttp",    "aiohttp"),
+        ("PIL",        "Pillow"),
+    ]
+    optional = [
+        ("cairosvg",   "cairosvg (SVG→PNG, optional)"),
     ]
     all_ok = True
-    for module, label in checks:
+    for module, label in required:
         try:
             mod = __import__(module)
             ver = getattr(mod, "__version__", "?")
@@ -206,6 +231,13 @@ def verify_imports() -> bool:
         except ImportError:
             _fail(f"{label} — import failed even after install")
             all_ok = False
+    for module, label in optional:
+        try:
+            mod = __import__(module)
+            ver = getattr(mod, "__version__", "?")
+            _ok(f"{label} {ver}")
+        except ImportError:
+            _info(f"{label} — not installed (Pillow fallback active)")
     return all_ok
 
 
