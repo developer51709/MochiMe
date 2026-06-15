@@ -9,6 +9,7 @@ from discord.ext import commands
 import config
 import console
 import database
+import patches
 
 COGS = [
     "cogs.emoji_loader",
@@ -39,6 +40,9 @@ class MochiMe(commands.Bot):
     async def setup_hook(self) -> None:
         console.setup_logging()
         console.print_banner()
+
+        console.step("Patches")
+        patches.apply_all()
 
         console.step("Database")
         await database.init_db()
