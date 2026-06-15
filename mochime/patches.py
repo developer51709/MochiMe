@@ -237,6 +237,7 @@ def _patch_cv2_send() -> bool:
     Context.send                             = _wrap(Context.send)                             # type: ignore[method-assign]
     discord.abc.Messageable.send             = _wrap(discord.abc.Messageable.send)             # type: ignore[method-assign]
     discord.InteractionResponse.send_message = _wrap(discord.InteractionResponse.send_message) # type: ignore[method-assign]
+    discord.InteractionResponse.edit_message = _wrap(discord.InteractionResponse.edit_message) # type: ignore[method-assign]
     discord.Webhook.send                     = _wrap(discord.Webhook.send)                     # type: ignore[method-assign]
 
     return True
@@ -260,7 +261,8 @@ def apply_all() -> None:
     if _patch_cv2_send():
         log.info(
             "Patched CV2 send forwarder — components= → LayoutView on "
-            "Context.send / Messageable.send / InteractionResponse / Webhook"
+            "Context.send / Messageable.send / InteractionResponse.send_message"
+            " / InteractionResponse.edit_message / Webhook.send"
         )
     else:
         log.info("CV2 send forwarder already applied")
