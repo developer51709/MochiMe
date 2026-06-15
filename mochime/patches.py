@@ -216,8 +216,10 @@ def _patch_cv2_send() -> bool:
             lv.add_item(item)
         return lv
 
+    _MISSING = object()
+
     def _wrap(original):
-        async def _patched(self, content=None, **kwargs):
+        async def _patched(self, content=_MISSING, **kwargs):
             cv2_items = kwargs.pop("components", None)
             kwargs.pop("flags", None)          # LayoutView sets flags automatically
 
@@ -225,7 +227,10 @@ def _patch_cv2_send() -> bool:
                 kwargs.pop("view", None)       # discard any plain View passed alongside
                 kwargs["view"] = _make_layout_view(cv2_items)
 
-            return await original(self, content, **kwargs)
+            # Always pass content as keyword — edit_message has no positional content
+            if content is not _MISSING:
+                kwargs["content"] = content
+            return await original(self, **kwargs)
 
         setattr(_patched, _SENTINEL, True)
         _patched.__name__    = getattr(original, "__name__",    "_patched")
