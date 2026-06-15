@@ -12,7 +12,6 @@ import database
 from cogs.emoji_loader import EmojiLoader
 
 # nekos.best — free, no-auth anime GIF API (primary)
-# https://nekos.best/api/v2/{action}  →  {"results": [{"url": "...", ...}]}
 NEKOS_BEST_BASE = "https://nekos.best/api/v2/{action}"
 
 # waifu.pics — fallback
@@ -23,10 +22,20 @@ _NEKOS_ACTION_MAP: dict[str, str] = {
     "hug":    "hug",
     "pat":    "pat",
     "kiss":   "kiss",
-    "bonk":   "slap",    # nekos.best has no bonk; slap is closest
+    "bonk":   "slap",
     "blush":  "blush",
     "cuddle": "cuddle",
     "poke":   "poke",
+}
+
+# "Action back" button labels + emoji per action
+_BACK_LABELS: dict[str, tuple[str, str]] = {
+    "hug":    ("Hug back",    "🫂"),
+    "pat":    ("Pat back",    "🌸"),
+    "kiss":   ("Kiss back",   "💋"),
+    "bonk":   ("Bonk back",   "🔨"),
+    "cuddle": ("Cuddle back", "🥰"),
+    "poke":   ("Poke back",   "👉"),
 }
 
 RP_LINES: dict[str, list[str]] = {
@@ -94,18 +103,14 @@ RP_EMOJI_KEYS: dict[str, str] = {
     "poke":   "poke",
 }
 
+# Decorators for user-installed app + DM support
+_INSTALLS = app_commands.allowed_installs(guilds=True, users=True)
+_CONTEXTS = app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+
 
 async def _fetch_gif(action: str) -> str | None:
-    """
-    Fetch an animated GIF URL for the given RP action.
-
-    Tries nekos.best first (primary), then waifu.pics (fallback).
-    Returns None if both fail so the card still renders without a GIF.
-    """
     nekos_action = _NEKOS_ACTION_MAP.get(action, action)
-
     async with aiohttp.ClientSession() as session:
-        # ── primary: nekos.best ──────────────────────────────────────────────
         try:
             url = NEKOS_BEST_BASE.format(action=nekos_action)
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -117,7 +122,6 @@ async def _fetch_gif(action: str) -> str | None:
         except Exception:
             pass
 
-        # ── fallback: waifu.pics ─────────────────────────────────────────────
         try:
             url = WAIFU_PICS_BASE.format(action=action)
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
@@ -165,6 +169,29 @@ def _build_rp_container(
     return discord.ui.Container(*children, accent_color=discord.Color(color))
 
 
+def _build_rp_view(
+    action: str,
+    author: discord.Member | discord.User,
+    target: discord.Member | discord.User | None,
+    container: discord.ui.Container,
+) -> discord.ui.LayoutView:
+    """Wrap the container in a LayoutView, adding a back-button when there's a target."""
+    lv = discord.ui.LayoutView(timeout=None)
+    lv.add_item(container)
+
+    if target is not None and target.id != author.id and action in _BACK_LABELS:
+        label, emoji = _BACK_LABELS[action]
+        btn = discord.ui.Button(
+            label=label,
+            emoji=emoji,
+            style=discord.ButtonStyle.primary,
+            custom_id=f"rp_back:{action}:{author.id}:{target.id}",
+        )
+        lv.add_item(btn)
+
+    return lv
+
+
 class RP(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -177,13 +204,35 @@ class RP(commands.Cog):
         return cog
 
     def _register_context_menus(self) -> None:
+        _installs = app_commands.AppInstallationType(guild=True, user=True)
+        _contexts = app_commands.AppCommandContext(
+            guild=True, dm_channel=True, private_channel=True
+        )
         menus = [
-            app_commands.ContextMenu(name="🫂 Hug",    callback=self._ctx_hug),
-            app_commands.ContextMenu(name="🌸 Pat",    callback=self._ctx_pat),
-            app_commands.ContextMenu(name="💋 Kiss",   callback=self._ctx_kiss),
-            app_commands.ContextMenu(name="🔨 Bonk",   callback=self._ctx_bonk),
-            app_commands.ContextMenu(name="🥰 Cuddle", callback=self._ctx_cuddle),
-            app_commands.ContextMenu(name="👉 Poke",   callback=self._ctx_poke),
+            app_commands.ContextMenu(
+                name="🫂 Hug",    callback=self._ctx_hug,
+                allowed_installs=_installs, allowed_contexts=_contexts,
+            ),
+            app_commands.ContextMenu(
+                name="🌸 Pat",    callback=self._ctx_pat,
+                allowed_installs=_installs, allowed_contexts=_contexts,
+            ),
+            app_commands.ContextMenu(
+                name="💋 Kiss",   callback=self._ctx_kiss,
+                allowed_installs=_installs, allowed_contexts=_contexts,
+            ),
+            app_commands.ContextMenu(
+                name="🔨 Bonk",   callback=self._ctx_bonk,
+                allowed_installs=_installs, allowed_contexts=_contexts,
+            ),
+            app_commands.ContextMenu(
+                name="🥰 Cuddle", callback=self._ctx_cuddle,
+                allowed_installs=_installs, allowed_contexts=_contexts,
+            ),
+            app_commands.ContextMenu(
+                name="👉 Poke",   callback=self._ctx_poke,
+                allowed_installs=_installs, allowed_contexts=_contexts,
+            ),
         ]
         for menu in menus:
             self.bot.tree.add_command(menu)
@@ -193,11 +242,55 @@ class RP(commands.Cog):
         for menu in self._ctx_menus:
             self.bot.tree.remove_command(menu.name, type=menu.type)
 
+    # ── persistent button handler ──────────────────────────────────────────────
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        if interaction.type != discord.InteractionType.component:
+            return
+        data = interaction.data or {}
+        custom_id: str = data.get("custom_id", "")
+        if not custom_id.startswith("rp_back:"):
+            return
+
+        parts = custom_id.split(":")
+        if len(parts) != 4:
+            return
+        _, action, author_id_str, target_id_str = parts
+
+        # Only the original target can press this button
+        if str(interaction.user.id) != target_id_str:
+            await interaction.response.send_message(
+                "This button is only for the person who was hugged~ 🌸",
+                ephemeral=True,
+            )
+            return
+
+        # Fetch the original author to use as the new target
+        try:
+            new_target = await self.bot.fetch_user(int(author_id_str))
+        except Exception:
+            new_target = None
+
+        loader = self._loader()
+        gif_url = await _fetch_gif(action)
+        container = _build_rp_container(action, interaction.user, new_target, loader, gif_url)
+        await database.log_rp(
+            str(interaction.user.id),
+            action,
+            author_id_str,
+            str(interaction.guild_id) if interaction.guild_id else None,
+        )
+        lv = _build_rp_view(action, interaction.user, new_target, container)
+        await interaction.response.send_message(view=lv)
+
+    # ── context menus ──────────────────────────────────────────────────────────
+
     async def _send_rp_ctx(
         self,
         interaction: discord.Interaction,
         action: str,
-        target: discord.Member,
+        target: discord.Member | discord.User,
     ) -> None:
         loader = self._loader()
         gif_url = await _fetch_gif(action)
@@ -208,34 +301,34 @@ class RP(commands.Cog):
             str(target.id),
             str(interaction.guild_id) if interaction.guild_id else None,
         )
-        await interaction.response.send_message(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        lv = _build_rp_view(action, interaction.user, target, container)
+        await interaction.response.send_message(view=lv)
 
-    async def _ctx_hug(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def _ctx_hug(self, interaction: discord.Interaction, member: discord.User) -> None:
         await self._send_rp_ctx(interaction, "hug", member)
 
-    async def _ctx_pat(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def _ctx_pat(self, interaction: discord.Interaction, member: discord.User) -> None:
         await self._send_rp_ctx(interaction, "pat", member)
 
-    async def _ctx_kiss(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def _ctx_kiss(self, interaction: discord.Interaction, member: discord.User) -> None:
         await self._send_rp_ctx(interaction, "kiss", member)
 
-    async def _ctx_bonk(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def _ctx_bonk(self, interaction: discord.Interaction, member: discord.User) -> None:
         await self._send_rp_ctx(interaction, "bonk", member)
 
-    async def _ctx_cuddle(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def _ctx_cuddle(self, interaction: discord.Interaction, member: discord.User) -> None:
         await self._send_rp_ctx(interaction, "cuddle", member)
 
-    async def _ctx_poke(self, interaction: discord.Interaction, member: discord.Member) -> None:
+    async def _ctx_poke(self, interaction: discord.Interaction, member: discord.User) -> None:
         await self._send_rp_ctx(interaction, "poke", member)
+
+    # ── hybrid commands ────────────────────────────────────────────────────────
 
     async def _send_rp(
         self,
         ctx: commands.Context,
         action: str,
-        target: discord.Member | None = None,
+        target: discord.User | None = None,
     ) -> None:
         loader = self._loader()
         gif_url = await _fetch_gif(action)
@@ -246,43 +339,55 @@ class RP(commands.Cog):
             str(target.id) if target else None,
             str(ctx.guild.id) if ctx.guild else None,
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        lv = _build_rp_view(action, ctx.author, target, container)
+        await ctx.send(view=lv)
 
     @commands.hybrid_command(name="hug", description="Give someone a warm hug! 🫂")
     @app_commands.describe(target="Who to hug")
-    async def hug(self, ctx: commands.Context, target: discord.Member | None = None) -> None:
+    @_INSTALLS
+    @_CONTEXTS
+    async def hug(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "hug", target)
 
     @commands.hybrid_command(name="pat", description="Pat someone on the head~ 🌸")
     @app_commands.describe(target="Who to pat")
-    async def pat(self, ctx: commands.Context, target: discord.Member | None = None) -> None:
+    @_INSTALLS
+    @_CONTEXTS
+    async def pat(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "pat", target)
 
     @commands.hybrid_command(name="kiss", description="Give someone a sweet kiss 💋")
     @app_commands.describe(target="Who to kiss")
-    async def kiss(self, ctx: commands.Context, target: discord.Member | None = None) -> None:
+    @_INSTALLS
+    @_CONTEXTS
+    async def kiss(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "kiss", target)
 
     @commands.hybrid_command(name="bonk", description="Bonk someone on the head! 🔨")
     @app_commands.describe(target="Who to bonk")
-    async def bonk(self, ctx: commands.Context, target: discord.Member | None = None) -> None:
+    @_INSTALLS
+    @_CONTEXTS
+    async def bonk(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "bonk", target)
 
     @commands.hybrid_command(name="blush", description="Express your blush 😳")
+    @_INSTALLS
+    @_CONTEXTS
     async def blush(self, ctx: commands.Context) -> None:
         await self._send_rp(ctx, "blush")
 
     @commands.hybrid_command(name="cuddle", description="Cuddle with someone 🥰")
     @app_commands.describe(target="Who to cuddle with")
-    async def cuddle(self, ctx: commands.Context, target: discord.Member | None = None) -> None:
+    @_INSTALLS
+    @_CONTEXTS
+    async def cuddle(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "cuddle", target)
 
     @commands.hybrid_command(name="poke", description="Poke someone playfully 👉")
     @app_commands.describe(target="Who to poke")
-    async def poke(self, ctx: commands.Context, target: discord.Member | None = None) -> None:
+    @_INSTALLS
+    @_CONTEXTS
+    async def poke(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "poke", target)
 
 
