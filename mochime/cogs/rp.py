@@ -177,7 +177,6 @@ def _build_rp_view(
 ) -> discord.ui.LayoutView:
     """Wrap the container in a LayoutView, adding a back-button when there's a target."""
     lv = discord.ui.LayoutView(timeout=None)
-    lv.add_item(container)
 
     if target is not None and target.id != author.id and action in _BACK_LABELS:
         label, emoji = _BACK_LABELS[action]
@@ -187,7 +186,10 @@ def _build_rp_view(
             style=discord.ButtonStyle.primary,
             custom_id=f"rp_back:{action}:{author.id}:{target.id}",
         )
-        lv.add_item(btn)
+        ar = discord.ui.ActionRow(btn)
+        container.add_item(ar)
+
+    lv.add_item(container)
 
     return lv
 
