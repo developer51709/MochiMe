@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import base64
 import io
+import shutil
+import subprocess
 from pathlib import Path
 
 import aiohttp
@@ -78,6 +80,21 @@ _ICON_COLOR = "#E879A8"
 # Pillow fallback circle colour (used only when cairosvg is unavailable)
 _PALETTE_PINK: tuple[int, int, int] = (232, 121, 168)  # matches _ICON_COLOR
 
+# Resolve rsvg-convert once at import time (workflow PATH may differ from shell PATH)
+_RSVG_CONVERT: str | None = (
+    shutil.which("rsvg-convert")
+    or next(
+        (
+            str(p)
+            for p in Path("/nix/store").glob("*/bin/rsvg-convert")
+            if p.is_file()
+        ),
+        None,
+    )
+    if Path("/nix/store").exists()
+    else shutil.which("rsvg-convert")
+)
+
 # Check cairosvg availability once at import time
 _HAS_CAIRO: bool = False
 try:
@@ -126,15 +143,41 @@ def _tint_svg(svg_bytes: bytes) -> bytes:
 
 def _svg_to_png(svg_bytes: bytes, name: str, size: int = 128) -> bytes:
     """
-    Convert SVG bytes → PNG bytes (pink-tinted).
+    Convert SVG bytes → pink PNG bytes.
 
     Priority:
-      1. cairosvg  — perfect vector fidelity (needs libcairo system package)
-      2. Pillow    — pink circle placeholder (pure-Python, always available)
-      3. Minimal 1×1 transparent PNG — absolute last resort
+      1. rsvg-convert  — system librsvg; renders actual Phosphor paths
+      2. cairosvg      — Python binding (needs libcairo)
+      3. Pillow        — pink circle placeholder (last resort only)
+      4. 1×1 transparent PNG
     """
     tinted = _tint_svg(svg_bytes)
 
+    # ── 1. rsvg-convert (preferred) ─────────────────────────────────────────
+    if _RSVG_CONVERT:
+        try:
+            result = subprocess.run(
+                [
+                    _RSVG_CONVERT,
+                    f"--width={size}",
+                    f"--height={size}",
+                    "--format=png",
+                    "-",                     # read SVG from stdin
+                ],
+                input=tinted,
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0 and result.stdout:
+                return result.stdout
+            log.debug(
+                "rsvg-convert failed for %s (rc=%d): %s",
+                name, result.returncode, result.stderr[:80],
+            )
+        except subprocess.TimeoutExpired as exc:
+            log.debug("rsvg-convert timeout for %s: %s", name, exc)
+
+    # ── 2. cairosvg ──────────────────────────────────────────────────────────
     if _HAS_CAIRO:
         try:
             return _cairosvg.svg2png(  # type: ignore[union-attr]
@@ -143,15 +186,16 @@ def _svg_to_png(svg_bytes: bytes, name: str, size: int = 128) -> bytes:
                 output_height=size,
             )
         except Exception as exc:
-            log.debug("cairosvg failed for %s: %s — trying Pillow", name, exc)
+            log.debug("cairosvg failed for %s: %s", name, exc)
 
+    # ── 3. Pillow circle (last resort) ───────────────────────────────────────
     if _HAS_PILLOW:
         try:
             return _pillow_icon(name, size)
         except Exception as exc:
             log.debug("Pillow fallback failed for %s: %s", name, exc)
 
-    # Absolute last resort: 1×1 transparent PNG (valid, but invisible)
+    # ── 4. Minimal 1×1 transparent PNG ──────────────────────────────────────
     return (
         b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
         b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
@@ -265,7 +309,12 @@ class EmojiLoader(commands.Cog):
                 skipped += 1
 
         if converted:
-            method = "cairosvg" if _HAS_CAIRO else "Pillow (pink circle icons)"
+            if _RSVG_CONVERT:
+                method = "rsvg-convert (real Phosphor paths)"
+            elif _HAS_CAIRO:
+                method = "cairosvg"
+            else:
+                method = "Pillow (circle fallback)"
             log.info("Converted %d SVGs → PNG (pink) via %s", converted, method)
         if skipped:
             log.debug("Skipped %d icons (no SVG source)", skipped)
