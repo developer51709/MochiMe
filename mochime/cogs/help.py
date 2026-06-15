@@ -79,7 +79,7 @@ def build_main_container(emoji_loader: EmojiLoader) -> discord.ui.Container:
             f"{flower} *A cute pastel bot for your server* {flower}\n\n"
             "Select a category below to explore commands."
         ),
-        discord.ui.Separator(spacing=discord.SeparatorSpacing.small, divider=True),
+        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
         discord.ui.TextDisplay(
             f"{ribbon} **Categories** — use the menu to browse"
         ),
@@ -194,7 +194,7 @@ class Help(commands.Cog):
                 f"{heart} **Made with:** discord.py · aiosqlite · Phosphor Icons\n\n"
                 "Use `mochi help` to explore all commands!"
             ),
-            discord.ui.Separator(divider=True),
+            discord.ui.Separator(),
             discord.ui.ActionRow(
                 discord.ui.Button(
                     label="Add to Server",

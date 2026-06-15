@@ -73,7 +73,7 @@ class ConfirmView(discord.ui.View):
                 f"{shield} **Reason:** {self.reason}\n\n"
                 "Are you sure you want to do this?"
             ),
-            discord.ui.Separator(divider=True),
+            discord.ui.Separator(),
             discord.ui.ActionRow(
                 discord.ui.Button(
                     label=f"Confirm {self.action}",

@@ -123,7 +123,7 @@ def _build_rp_container(
             )
         )
 
-    children.append(discord.ui.Separator(divider=True))
+    children.append(discord.ui.Separator())
     children.append(discord.ui.TextDisplay(footer))
 
     return discord.ui.Container(*children, accent_color=discord.Color(color))

@@ -80,7 +80,7 @@ class Application(commands.Cog):
 
         container = discord.ui.Container(
             discord.ui.TextDisplay("\n".join(lines)),
-            discord.ui.Separator(divider=True),
+            discord.ui.Separator(),
             discord.ui.ActionRow(invite_btn),
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )

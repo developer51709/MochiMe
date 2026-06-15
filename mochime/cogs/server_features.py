@@ -64,7 +64,7 @@ class ServerFeatures(commands.Cog):
                 f"{ribbon} **Mod Role:** {mod_role}\n\n"
                 "*Use `/settings` to configure these options.*"
             ),
-            discord.ui.Separator(divider=True),
+            discord.ui.Separator(),
             discord.ui.TextDisplay(
                 f"## {ribbon} Unlocked Features\n"
                 f"{flower} RP Rooms\n"
