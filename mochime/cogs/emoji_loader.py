@@ -9,7 +9,10 @@ import discord
 from discord.ext import commands
 
 import config
+import console
 import database
+
+log = console.get_logger("cogs.emoji_loader")
 
 # Map internal name → official Phosphor icon filename (regular weight)
 # Source: https://github.com/phosphor-icons/core/tree/main/assets/regular
@@ -61,12 +64,13 @@ PHOSPHOR_ICONS: dict[str, str] = {
 }
 
 CDN_BASE = (
-    "https://raw.githubusercontent.com/phosphor-icons/core/main/assets/regular/{name}.svg"
+    "https://raw.githubusercontent.com/phosphor-icons/core"
+    "/main/assets/regular/{name}.svg"
 )
 
 
 class EmojiLoader(commands.Cog):
-    """Downloads real Phosphor SVGs from GitHub and registers them as application emojis."""
+    """Downloads real Phosphor SVGs and registers them as application emojis."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -83,7 +87,7 @@ class EmojiLoader(commands.Cog):
         async with db.execute("SELECT name, emoji_id FROM emojis") as cur:
             async for row in cur:
                 self.cache[row["name"]] = row["emoji_id"]
-        print(f"  ✦ Loaded {len(self.cache)} cached emoji IDs from DB")
+        log.info("Loaded %d cached emoji IDs from DB", len(self.cache))
 
     async def _download_missing_svgs(self) -> None:
         phosphor_dir = Path(config.PHOSPHOR_DIR)
@@ -96,10 +100,13 @@ class EmojiLoader(commands.Cog):
         ]
 
         if not to_download:
-            print(f"  ✦ All {len(PHOSPHOR_ICONS)} Phosphor SVGs already downloaded")
+            log.info("All %d Phosphor SVGs already downloaded", len(PHOSPHOR_ICONS))
             return
 
-        print(f"  ✦ Downloading {len(to_download)} Phosphor SVGs from phosphoricons.com CDN...")
+        log.info(
+            "Downloading %d Phosphor SVGs from phosphoricons.com CDN…",
+            len(to_download),
+        )
         downloaded = 0
         failed: list[str] = []
 
@@ -107,7 +114,9 @@ class EmojiLoader(commands.Cog):
             for internal, phosphor_name in to_download:
                 url = CDN_BASE.format(name=phosphor_name)
                 try:
-                    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    async with session.get(
+                        url, timeout=aiohttp.ClientTimeout(total=10)
+                    ) as resp:
                         if resp.status == 200:
                             svg_bytes = await resp.read()
                             (phosphor_dir / f"{internal}.svg").write_bytes(svg_bytes)
@@ -117,15 +126,15 @@ class EmojiLoader(commands.Cog):
                 except Exception:
                     failed.append(internal)
 
-        print(f"  ✦ Downloaded {downloaded}/{len(to_download)} SVGs ✓")
+        log.info("Downloaded %d/%d SVGs", downloaded, len(to_download))
         if failed:
-            print(f"  ✦ Failed to download: {', '.join(failed)} — Unicode fallbacks will be used")
+            log.warning("Failed to download: %s — Unicode fallbacks active", ", ".join(failed))
 
     async def _register_missing_emojis(self) -> None:
         phosphor_dir = Path(config.PHOSPHOR_DIR)
         app_id = self.bot.application_id
         if app_id is None:
-            print("  ✦ application_id unavailable — skipping emoji registration")
+            log.warning("application_id unavailable — skipping emoji registration")
             return
 
         headers = {
@@ -137,7 +146,9 @@ class EmojiLoader(commands.Cog):
         failed = 0
 
         async with aiohttp.ClientSession() as session:
-            existing_names = await self._fetch_existing_emoji_names(session, app_id, headers)
+            existing_names = await self._fetch_existing_emoji_names(
+                session, app_id, headers
+            )
 
             for internal in PHOSPHOR_ICONS:
                 if internal in self.cache or internal in existing_names:
@@ -149,8 +160,6 @@ class EmojiLoader(commands.Cog):
 
                 svg_bytes = svg_path.read_bytes()
                 b64 = base64.b64encode(svg_bytes).decode()
-                # Attempt SVG upload (Discord requires PNG/GIF in practice;
-                # this will fail gracefully and fall back to Unicode symbols)
                 image_data = f"data:image/svg+xml;base64,{b64}"
 
                 payload = {"name": internal, "image": image_data}
@@ -169,10 +178,11 @@ class EmojiLoader(commands.Cog):
                         failed += 1
 
         if registered:
-            print(f"  ✦ Registered {registered} new application emojis ✓")
+            log.info("Registered %d new application emojis", registered)
         if failed:
-            print(
-                f"  ✦ {failed} SVGs couldn't register (Discord requires PNG — Unicode fallbacks active)"
+            log.warning(
+                "%d SVGs rejected (Discord requires PNG) — Unicode fallbacks active",
+                failed,
             )
 
     async def _fetch_existing_emoji_names(
@@ -181,7 +191,7 @@ class EmojiLoader(commands.Cog):
         app_id: int,
         headers: dict[str, str],
     ) -> set[str]:
-        names: set[str] = {}
+        names: set[str] = set()
         try:
             async with session.get(
                 f"https://discord.com/api/v10/applications/{app_id}/emojis",
