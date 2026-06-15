@@ -4,10 +4,17 @@ patches.py — Runtime monkey-patches for stale discord.py behaviour.
 Applied once in bot.py before any cog is loaded.
 
 Patches
-  1. CommandTree.add_command   — context-menu limit 5 → 12 (Discord's real limit)
-  2. discord.ui.AttachmentInput — new class not in discord.py; added to discord.ui
-                                   namespace so Modal subclasses can use it as a
-                                   TextInput that validates image URLs.
+  1. CommandTree.add_command    — context-menu limit 5 → 12 (Discord's real limit)
+  2. discord.ui.AttachmentInput — new class; adds image-URL-validated TextInput to
+                                   discord.ui for use in Modal subclasses.
+  3. CV2 send forwarder         — discord.py 2.7.x high-level send methods do not
+                                   accept `components=` or `flags=`; CV2 items must
+                                   go through LayoutView.  This patch intercepts
+                                   `components=[...]` on Context.send,
+                                   Messageable.send, InteractionResponse.send_message,
+                                   and Webhook.send, converts them to a LayoutView,
+                                   and strips the now-redundant flags= kwarg so all
+                                   existing cog code works without modification.
 """
 from __future__ import annotations
 
@@ -173,6 +180,68 @@ class AttachmentInput(discord.ui.TextInput):
 discord.ui.AttachmentInput = AttachmentInput  # type: ignore[attr-defined]
 
 
+# ─── patch 3: CV2 send forwarder ──────────────────────────────────────────────
+
+def _patch_cv2_send() -> bool:
+    """
+    discord.py 2.7.x high-level send methods (Context.send, Messageable.send,
+    InteractionResponse.send_message, Webhook.send) do not accept a raw
+    `components=` kwarg — CV2 items must be added to a LayoutView and passed
+    via `view=`.  The `components_v2` MessageFlag is then set automatically by
+    discord.py when the view's `has_components_v2()` returns True.
+
+    This patch wraps all four send targets so that cog code written as:
+
+        await ctx.send(components=[container],
+                       flags=discord.MessageFlags(components_v2=True))
+
+    is silently converted to:
+
+        lv = discord.ui.LayoutView(); lv.add_item(container)
+        await ctx.send(view=lv)
+
+    No cog code needs to change.  Non-CV2 calls pass through unmodified.
+    If both `components=` and `view=` are present (prefix-command edge case),
+    the LayoutView replaces the plain View; the caller must handle interactive
+    buttons inside the LayoutView itself.
+    """
+    _SENTINEL = "_mochime_cv2_patched"
+
+    if getattr(discord.abc.Messageable.send, _SENTINEL, False):
+        return False  # already applied (hot-reload guard)
+
+    def _make_layout_view(items: list) -> discord.ui.LayoutView:
+        lv = discord.ui.LayoutView()
+        for item in items:
+            lv.add_item(item)
+        return lv
+
+    def _wrap(original):
+        async def _patched(self, content=None, **kwargs):
+            cv2_items = kwargs.pop("components", None)
+            kwargs.pop("flags", None)          # LayoutView sets flags automatically
+
+            if cv2_items is not None:
+                kwargs.pop("view", None)       # discard any plain View passed alongside
+                kwargs["view"] = _make_layout_view(cv2_items)
+
+            return await original(self, content, **kwargs)
+
+        setattr(_patched, _SENTINEL, True)
+        _patched.__name__    = getattr(original, "__name__",    "_patched")
+        _patched.__qualname__ = getattr(original, "__qualname__", "_patched")
+        _patched.__doc__     = original.__doc__
+        return _patched
+
+    from discord.ext.commands import Context
+    Context.send                             = _wrap(Context.send)                             # type: ignore[method-assign]
+    discord.abc.Messageable.send             = _wrap(discord.abc.Messageable.send)             # type: ignore[method-assign]
+    discord.InteractionResponse.send_message = _wrap(discord.InteractionResponse.send_message) # type: ignore[method-assign]
+    discord.Webhook.send                     = _wrap(discord.Webhook.send)                     # type: ignore[method-assign]
+
+    return True
+
+
 # ─── apply_all ────────────────────────────────────────────────────────────────
 
 def apply_all() -> None:
@@ -183,9 +252,15 @@ def apply_all() -> None:
             DISCORD_REAL_LIMIT,
         )
     else:
-        log.info(
-            "Context-menu limit patch not needed (already patched or not required)"
-        )
+        log.info("Context-menu limit patch not needed (already patched or not required)")
 
     # AttachmentInput is already attached at module level; just confirm.
     log.info("discord.ui.AttachmentInput registered (%s)", AttachmentInput.__name__)
+
+    if _patch_cv2_send():
+        log.info(
+            "Patched CV2 send forwarder — components= → LayoutView on "
+            "Context.send / Messageable.send / InteractionResponse / Webhook"
+        )
+    else:
+        log.info("CV2 send forwarder already applied")

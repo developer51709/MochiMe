@@ -85,7 +85,7 @@ def print_banner(version: str = "1.0.0", prefix: str = "mochi ") -> None:
         print(f"  {vbar}  {_paint(C.BOLD + col, line.ljust(44))}  {vbar}")
 
     sub = _paint(C.DIM + C.PINK, "cute  ·  pastel  ·  discord bot")
-    print(f"  {vbar}  {'':>2}{sub:<52}  {vbar}")
+    print(f"  {vbar}     {'':>2}{sub:<52}     {vbar}")
     print(f"  {bl}{border}{br}")
     print()
 

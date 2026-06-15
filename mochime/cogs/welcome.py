@@ -404,27 +404,12 @@ class Welcome(commands.Cog):
         if ctx.interaction:
             await ctx.interaction.response.send_modal(modal)
         else:
-            loader  = self._loader()
-            sparkle = loader.get("sparkle") if loader else "✨"
-            view    = _OpenModalView(modal)
-            prompt  = discord.ui.Container(
-                discord.ui.TextDisplay(
-                    f"## {sparkle} Welcome Setup\n"
-                    "Click the button below to open the setup wizard."
-                ),
-                discord.ui.ActionRow(
-                    discord.ui.Button(
-                        label="Open Setup Wizard",
-                        style=discord.ButtonStyle.primary,
-                        emoji="🌸",
-                        custom_id="open_welcome_modal",
-                    )
-                ),
-                accent_color=discord.Color(config.PASTEL_PURPLE),
-            )
+            # Prefix commands cannot open modals directly — send a plain button.
+            # (CV2 LayoutView and interactive View cannot be mixed; use a regular
+            # View here so the button handler works correctly.)
+            view = _OpenModalView(modal)
             await ctx.send(
-                components=[prompt],
-                flags=discord.MessageFlags(components_v2=True),
+                "🌸 Click **Open Setup Wizard** to configure your welcome message!",
                 view=view,
             )
 
