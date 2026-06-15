@@ -10,7 +10,7 @@ from cogs.emoji_loader import EmojiLoader
 
 
 class Application(commands.Cog):
-    """User-installable application commands — work anywhere the user has the app installed."""
+    """User-installable app commands and additional context menus."""
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -23,11 +23,12 @@ class Application(commands.Cog):
         return cog
 
     def _register_context_menus(self) -> None:
-        hug_menu = app_commands.ContextMenu(name="🫂 Hug", callback=self._ctx_hug)
-        pat_menu = app_commands.ContextMenu(name="🌸 Pat", callback=self._ctx_pat)
-        profile_menu = app_commands.ContextMenu(name="✨ MochiMe Profile", callback=self._ctx_profile)
-
-        for menu in (hug_menu, pat_menu, profile_menu):
+        menus = [
+            app_commands.ContextMenu(name="✨ Mochi Profile",    callback=self._ctx_profile),
+            app_commands.ContextMenu(name="📌 View RP Stats",    callback=self._ctx_rp_stats),
+            app_commands.ContextMenu(name="🛡️ Mod History",     callback=self._ctx_mod_history),
+        ]
+        for menu in menus:
             self.bot.tree.add_command(menu)
             self._ctx_menus.append(menu)
 
@@ -35,93 +36,167 @@ class Application(commands.Cog):
         for menu in self._ctx_menus:
             self.bot.tree.remove_command(menu.name, type=menu.type)
 
-    async def _ctx_hug(self, interaction: discord.Interaction, member: discord.Member) -> None:
-        loader = self._loader()
-        hug_e = loader.get("hug")
-        sparkle = loader.get("sparkle")
-
-        container = discord.ui.Container(
-            discord.ui.TextDisplay(
-                f"## {hug_e} Hug! {sparkle}\n\n"
-                f"{interaction.user.mention} wraps their arms around {member.mention} "
-                "in a warm, cozy hug! 💕"
-            ),
-            accent_color=discord.Color(config.PASTEL_PINK),
-        )
-        await interaction.response.send_message(
-            components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
-        )
-        await database.log_rp(str(interaction.user.id), "hug", str(member.id))
-
-    async def _ctx_pat(self, interaction: discord.Interaction, member: discord.Member) -> None:
-        loader = self._loader()
-        pat_e = loader.get("pat")
-        flower = loader.get("flower")
-
-        container = discord.ui.Container(
-            discord.ui.TextDisplay(
-                f"## {pat_e} Pat! {flower}\n\n"
-                f"{interaction.user.mention} gently pats {member.mention} on the head~ "
-                "*pat pat* 🌸"
-            ),
-            accent_color=discord.Color(config.PASTEL_PURPLE),
-        )
-        await interaction.response.send_message(
-            components=[container],
-            flags=discord.MessageFlags(is_components_v2=True),
-        )
-        await database.log_rp(str(interaction.user.id), "pat", str(member.id))
-
     async def _ctx_profile(
         self, interaction: discord.Interaction, member: discord.Member
     ) -> None:
         loader = self._loader()
         sparkle = loader.get("sparkle")
         star = loader.get("star")
-        heart = loader.get("heart")
         ribbon = loader.get("ribbon")
+        heart = loader.get("heart")
+        flower = loader.get("flower")
 
         db = await database.get_db()
         async with db.execute(
-            "SELECT action, COUNT(*) as cnt FROM rp_stats WHERE user_id = ? GROUP BY action",
+            "SELECT action, COUNT(*) as cnt FROM rp_stats WHERE user_id = ? GROUP BY action ORDER BY cnt DESC",
             (str(member.id),),
         ) as cur:
-            stats = {row["action"]: row["cnt"] async for row in cur}
+            stats = [(row["action"], row["cnt"]) async for row in cur]
 
-        lines = [f"## {sparkle} {member.display_name}'s Mochi Profile\n"]
+        lines = [f"## {sparkle} {member.display_name}'s Profile\n"]
         if stats:
             lines.append(f"{ribbon} **RP Stats**")
-            for action, cnt in stats.items():
+            for action, cnt in stats:
                 icon = loader.get(action)
-                lines.append(f"{icon} **{action.title()}:** `{cnt}`")
+                lines.append(f"  {icon} `{action.title()}` — **{cnt}**×")
         else:
-            lines.append(f"{heart} *No RP stats yet — try `mochi hug @someone`!*")
+            lines.append(f"{heart} *No RP stats yet!*")
 
-        lines.append(f"\n{star} **Joined:** <t:{int(member.joined_at.timestamp())}:R>" if member.joined_at else "")
+        if member.joined_at:
+            lines.append(f"\n{star} **Joined:** <t:{int(member.joined_at.timestamp())}:R>")
+        lines.append(f"{flower} **Roles:** {len(member.roles) - 1}")
 
         is_in_guild = interaction.guild is not None
-        if not is_in_guild:
-            lines.append(
-                f"\n{ribbon} *Some features require MochiMe to be added to a server.*"
-            )
+        invite_btn = discord.ui.Button(
+            label="Add MochiMe to Your Server",
+            style=discord.ButtonStyle.link,
+            url=f"https://discord.com/oauth2/authorize?client_id={self.bot.application_id}&scope=bot+applications.commands",
+        ) if not is_in_guild else discord.ui.Button(
+            label="MochiMe is here 🌸",
+            style=discord.ButtonStyle.secondary,
+            disabled=True,
+            custom_id="already_here",
+        )
 
         container = discord.ui.Container(
             discord.ui.TextDisplay("\n".join(lines)),
             discord.ui.Separator(divider=True),
-            discord.ui.ActionRow(
-                discord.ui.Button(
-                    label="Add MochiMe to Your Server",
-                    style=discord.ButtonStyle.link,
-                    url=f"https://discord.com/oauth2/authorize?client_id={self.bot.application_id}&scope=bot+applications.commands",
-                ) if not is_in_guild else discord.ui.Button(
-                    label="Bot is already here 🌸",
-                    style=discord.ButtonStyle.secondary,
-                    disabled=True,
-                    custom_id="already_here",
-                ),
-            ),
+            discord.ui.ActionRow(invite_btn),
             accent_color=discord.Color(config.PASTEL_PURPLE),
+        )
+        await interaction.response.send_message(
+            components=[container],
+            flags=discord.MessageFlags(is_components_v2=True),
+            ephemeral=True,
+        )
+
+    async def _ctx_rp_stats(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
+        loader = self._loader()
+        ribbon = loader.get("ribbon")
+        heart = loader.get("heart")
+        trophy = loader.get("trophy")
+        sparkle = loader.get("sparkle")
+
+        db = await database.get_db()
+
+        # Total RP actions given
+        async with db.execute(
+            "SELECT action, COUNT(*) as cnt FROM rp_stats WHERE user_id = ? GROUP BY action ORDER BY cnt DESC",
+            (str(member.id),),
+        ) as cur:
+            given = [(row["action"], row["cnt"]) async for row in cur]
+
+        # Total RP actions received
+        async with db.execute(
+            "SELECT action, COUNT(*) as cnt FROM rp_stats WHERE target_id = ? GROUP BY action ORDER BY cnt DESC",
+            (str(member.id),),
+        ) as cur:
+            received = [(row["action"], row["cnt"]) async for row in cur]
+
+        lines = [f"## {ribbon} {member.display_name}'s RP Stats\n"]
+
+        if given:
+            lines.append(f"{trophy} **Given**")
+            for action, cnt in given[:5]:
+                icon = loader.get(action)
+                lines.append(f"  {icon} `{action.title()}` — **{cnt}**×")
+        else:
+            lines.append(f"{heart} *No actions given yet!*")
+
+        lines.append("")
+
+        if received:
+            lines.append(f"{sparkle} **Received**")
+            for action, cnt in received[:5]:
+                icon = loader.get(action)
+                lines.append(f"  {icon} `{action.title()}` — **{cnt}**×")
+        else:
+            lines.append(f"{heart} *No actions received yet!*")
+
+        container = discord.ui.Container(
+            discord.ui.TextDisplay("\n".join(lines)),
+            accent_color=discord.Color(config.PASTEL_PINK),
+        )
+        await interaction.response.send_message(
+            components=[container],
+            flags=discord.MessageFlags(is_components_v2=True),
+            ephemeral=True,
+        )
+
+    async def _ctx_mod_history(
+        self, interaction: discord.Interaction, member: discord.Member
+    ) -> None:
+        loader = self._loader()
+
+        # Only show mod history to moderators
+        if interaction.guild and isinstance(interaction.user, discord.Member):
+            if not interaction.user.guild_permissions.moderate_members:
+                cross = loader.get("cross")
+                container = discord.ui.Container(
+                    discord.ui.TextDisplay(
+                        f"## {cross} Access Denied\n"
+                        "You need the **Moderate Members** permission to view mod history."
+                    ),
+                    accent_color=discord.Color(config.PASTEL_PEACH),
+                )
+                await interaction.response.send_message(
+                    components=[container],
+                    flags=discord.MessageFlags(is_components_v2=True),
+                    ephemeral=True,
+                )
+                return
+
+        shield = loader.get("shield")
+        warning = loader.get("warning")
+        sparkle = loader.get("sparkle")
+
+        db = await database.get_db()
+        guild_id = str(interaction.guild_id) if interaction.guild_id else None
+
+        query = (
+            "SELECT action, reason, created_at FROM moderation_logs "
+            "WHERE target_id = ?"
+            + (" AND guild_id = ?" if guild_id else "")
+            + " ORDER BY created_at DESC LIMIT 10"
+        )
+        params = (str(member.id), guild_id) if guild_id else (str(member.id),)
+
+        async with db.execute(query, params) as cur:
+            logs = [(row["action"], row["reason"], row["created_at"]) async for row in cur]
+
+        lines = [f"## {shield} Mod History — {member.display_name}\n"]
+        if logs:
+            for action, reason, created_at in logs:
+                icon = loader.get("warning") if action.startswith("warn") else loader.get("ban")
+                lines.append(f"{icon} **{action.title()}** — {reason or 'No reason'} *(logged {created_at[:10]})*")
+        else:
+            lines.append(f"{sparkle} *No moderation history found.*")
+
+        container = discord.ui.Container(
+            discord.ui.TextDisplay("\n".join(lines)),
+            accent_color=discord.Color(config.PASTEL_BLUE),
         )
         await interaction.response.send_message(
             components=[container],
@@ -134,10 +209,7 @@ class Application(commands.Cog):
     async def user_profile(
         self, ctx: commands.Context, member: discord.Member | None = None
     ) -> None:
-        target = member or ctx.author
-        if not isinstance(target, discord.Member):
-            target = ctx.author
-
+        target: discord.Member | discord.User = member or ctx.author
         loader = self._loader()
         sparkle = loader.get("sparkle")
         star = loader.get("star")
@@ -156,7 +228,7 @@ class Application(commands.Cog):
             lines.append(f"{ribbon} **RP Stats**")
             for action, cnt in stats.items():
                 icon = loader.get(action)
-                lines.append(f"{icon} `{action.title()}` — **{cnt}** times")
+                lines.append(f"  {icon} `{action.title()}` — **{cnt}**×")
         else:
             lines.append(f"{heart} *No RP actions yet!*")
 
