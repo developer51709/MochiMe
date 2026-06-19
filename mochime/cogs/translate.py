@@ -58,7 +58,7 @@ _TRANSLATE_URL = (
     "?client=gtx&sl=auto&tl={tl}&dt=t&q={q}"
 )
 
-_MAX_CHARS = 1500   # Discord message content limit we'll display
+_MAX_CHARS = 1500
 
 
 # ─── translation helper ───────────────────────────────────────────────────────
@@ -78,8 +78,6 @@ async def _translate(text: str, target_lang: str) -> tuple[str, str]:
                 raise RuntimeError(f"HTTP {resp.status}")
             data = await resp.json(content_type=None)
 
-    # data[0] is a list of [translated_chunk, original_chunk, ...]
-    # data[2] is the detected source language
     chunks = data[0] or []
     translated = "".join(part[0] for part in chunks if part and part[0])
     detected = data[2] if len(data) > 2 and data[2] else "?"
@@ -88,23 +86,7 @@ async def _translate(text: str, target_lang: str) -> tuple[str, str]:
 
 # ─── CV2 builders ─────────────────────────────────────────────────────────────
 
-def _picker_view(
-    original_text: str,
-    channel_id: int,
-    message_id: int,
-) -> discord.ui.LayoutView:
-    """Ephemeral CV2 layout with a language select menu."""
-    preview = original_text[:200] + ("…" if len(original_text) > 200 else "")
-
-    container = discord.ui.Container(
-        discord.ui.TextDisplay(
-            "## 🌐 Translate Message\n\n"
-            f"**Original text:**\n> {preview}\n\n"
-            "-# Choose a target language from the menu below."
-        ),
-        accent_color=discord.Color(config.PASTEL_BLUE),
-    )
-
+def _lang_select(channel_id: int, message_id: int) -> discord.ui.ActionRow:
     select = discord.ui.Select(
         placeholder="🌐 Translate to…",
         custom_id=f"translate_lang:{channel_id}:{message_id}",
@@ -113,10 +95,40 @@ def _picker_view(
             for code, flag, name in LANGUAGES
         ],
     )
+    return discord.ui.ActionRow(select)
+
+
+def _picker_view(
+    original_text: str,
+    channel_id: int,
+    message_id: int,
+) -> discord.ui.LayoutView:
+    """Ephemeral CV2 layout — language select inside the container."""
+    preview = original_text[:200] + ("…" if len(original_text) > 200 else "")
+
+    container = discord.ui.Container(
+        discord.ui.TextDisplay(
+            "## 🌐 Translate Message\n\n"
+            f"**Original text:**\n> {preview}\n\n"
+            "-# Choose a target language from the menu below."
+        ),
+        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+        _lang_select(channel_id, message_id),
+        accent_color=discord.Color(config.PASTEL_BLUE),
+    )
 
     lv = discord.ui.LayoutView(timeout=120)
     lv.add_item(container)
-    lv.add_item(discord.ui.ActionRow(select))
+    return lv
+
+
+def _loading_view() -> discord.ui.LayoutView:
+    container = discord.ui.Container(
+        discord.ui.TextDisplay("## 🌐 Translating…\n-# Please wait a moment~"),
+        accent_color=discord.Color(config.PASTEL_BLUE),
+    )
+    lv = discord.ui.LayoutView()
+    lv.add_item(container)
     return lv
 
 
@@ -141,9 +153,7 @@ def _result_view(
             f"**Translation:**\n{trans_display}"
         ),
         discord.ui.Separator(),
-        discord.ui.TextDisplay(
-            f"-# Translated with Google Translate"
-        ),
+        discord.ui.TextDisplay("-# Translated with Google Translate"),
         accent_color=discord.Color(config.PASTEL_BLUE),
     )
 
@@ -169,8 +179,7 @@ class Translate(commands.Cog):
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        # Cache: maps (user_id, message_id) → original text.
-        # Cleared once consumed so memory doesn't grow unbounded.
+        # Cache: (user_id, message_id) → original text; consumed on first use.
         self._pending: dict[tuple[int, int], str] = {}
         self._ctx_menus: list[app_commands.ContextMenu] = []
         self._register_context_menus()
@@ -206,7 +215,6 @@ class Translate(commands.Cog):
             )
             return
 
-        # Cache the original text keyed by (user_id, message_id)
         key = (interaction.user.id, message.id)
         self._pending[key] = text
 
@@ -244,7 +252,6 @@ class Translate(commands.Cog):
         original = self._pending.pop(key, None)
 
         if original is None:
-            # Fallback: attempt to fetch the message from the channel
             try:
                 channel_id = int(channel_id_str)
                 channel = self.bot.get_channel(channel_id)
@@ -260,15 +267,9 @@ class Translate(commands.Cog):
             )
             return
 
-        # Show a loading state while translating
-        loading_lv = discord.ui.LayoutView()
-        loading_lv.add_item(discord.ui.Container(
-            discord.ui.TextDisplay("## 🌐 Translating…\n-# Please wait a moment~"),
-            accent_color=discord.Color(config.PASTEL_BLUE),
-        ))
-        await interaction.response.edit_message(view=loading_lv)
+        # Show loading state
+        await interaction.response.edit_message(view=_loading_view())
 
-        # Perform translation
         try:
             translated, detected = await _translate(original, target_lang)
         except Exception as exc:

@@ -75,6 +75,22 @@ CATEGORIES: dict[str, dict] = {
 }
 
 
+def _category_select(emoji_loader: EmojiLoader) -> discord.ui.ActionRow:
+    select = discord.ui.Select(
+        placeholder="🌸 Choose a category…",
+        options=[
+            discord.SelectOption(
+                label=cat["label"],
+                value=key,
+                description=cat["description"],
+            )
+            for key, cat in CATEGORIES.items()
+        ],
+        custom_id="help_category_select",
+    )
+    return discord.ui.ActionRow(select)
+
+
 def build_main_container(emoji_loader: EmojiLoader) -> discord.ui.Container:
     sparkle = emoji_loader.get("sparkle")
     flower = emoji_loader.get("flower")
@@ -87,9 +103,9 @@ def build_main_container(emoji_loader: EmojiLoader) -> discord.ui.Container:
             "Select a category below to explore commands."
         ),
         discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-        discord.ui.TextDisplay(
-            f"{ribbon} **Categories** — use the menu to browse"
-        ),
+        discord.ui.TextDisplay(f"{ribbon} **Categories** — use the menu to browse"),
+        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+        _category_select(emoji_loader),
         accent_color=discord.Color(config.PASTEL_PINK),
     )
 
@@ -101,49 +117,21 @@ def build_category_container(key: str, emoji_loader: EmojiLoader) -> discord.ui.
     lines = [f"## {cat['label']}\n*{cat['description']}*\n"]
     for cmd, desc in cat["commands"]:
         lines.append(f"**{cmd}** — {desc}")
-
     lines.append(f"\n*All commands also work as slash commands!* {sparkle}")
 
     return discord.ui.Container(
         discord.ui.TextDisplay("\n".join(lines)),
+        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+        _category_select(emoji_loader),
         accent_color=discord.Color(cat["color"]),
     )
-
-
-class CategorySelect(discord.ui.Select):
-    def __init__(self, emoji_loader: EmojiLoader) -> None:
-        self.emoji_loader = emoji_loader
-        options = [
-            discord.SelectOption(
-                label=cat["label"],
-                value=key,
-                description=cat["description"],
-            )
-            for key, cat in CATEGORIES.items()
-        ]
-        super().__init__(
-            placeholder="🌸 Choose a category...",
-            options=options,
-            custom_id="help_category_select",
-        )
-
-    async def callback(self, interaction: discord.Interaction) -> None:
-        selected = self.values[0]
-        cat_container = build_category_container(selected, self.emoji_loader)
-        select_row = discord.ui.ActionRow(CategorySelect(self.emoji_loader))
-        await interaction.response.edit_message(
-            view=_cv2(cat_container, select_row),
-        )
 
 
 class HelpLayoutView(discord.ui.LayoutView):
     def __init__(self, emoji_loader: EmojiLoader) -> None:
         super().__init__(timeout=300)
         self.emoji_loader = emoji_loader
-        main = build_main_container(emoji_loader)
-        row = discord.ui.ActionRow(CategorySelect(emoji_loader))
-        self.add_item(main)
-        self.add_item(row)
+        self.add_item(build_main_container(emoji_loader))
 
 
 class Help(commands.Cog):
@@ -154,6 +142,24 @@ class Help(commands.Cog):
         cog = self.bot.get_cog("EmojiLoader")
         assert isinstance(cog, EmojiLoader)
         return cog
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        if interaction.type != discord.InteractionType.component:
+            return
+        data = interaction.data or {}
+        if data.get("custom_id") != "help_category_select":
+            return
+        values = data.get("values", [])
+        if not values:
+            return
+
+        loader = self._get_emoji_loader()
+        selected = values[0]
+        container = build_category_container(selected, loader)
+        lv = discord.ui.LayoutView()
+        lv.add_item(container)
+        await interaction.response.edit_message(view=lv)
 
     @commands.hybrid_command(name="help", description="Show the MochiMe help menu")
     async def help_cmd(self, ctx: commands.Context) -> None:

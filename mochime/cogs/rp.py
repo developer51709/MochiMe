@@ -33,7 +33,7 @@ _BACK_LABELS: dict[str, tuple[str, str]] = {
     "poke":   ("Poke back",   "👉"),
 }
 
-# Actions available in the context-menu select (blush is self-only, excluded)
+# Actions available in the context-menu select (blush is self-only)
 _SELECT_ACTIONS: list[tuple[str, str, str]] = [
     ("hug",    "Hug",    "🫂"),
     ("pat",    "Pat",    "🌸"),
@@ -144,7 +144,9 @@ def _build_rp_container(
     target: discord.Member | discord.User | None,
     emoji_loader: EmojiLoader,
     gif_url: str | None = None,
+    back_button: discord.ui.Button | None = None,
 ) -> discord.ui.Container:
+    """Build the RP result container, optionally embedding a back-button inside it."""
     icon = emoji_loader.get(RP_EMOJI_KEYS[action])
     sparkle = emoji_loader.get("sparkle")
     ribbon = emoji_loader.get("ribbon")
@@ -170,6 +172,9 @@ def _build_rp_container(
     children.append(discord.ui.Separator())
     children.append(discord.ui.TextDisplay(footer))
 
+    if back_button is not None:
+        children.append(discord.ui.ActionRow(back_button))
+
     return discord.ui.Container(*children, accent_color=discord.Color(color))
 
 
@@ -177,22 +182,26 @@ def _build_rp_view(
     action: str,
     author: discord.Member | discord.User,
     target: discord.Member | discord.User | None,
-    container: discord.ui.Container,
+    gif_url: str | None,
+    emoji_loader: EmojiLoader,
+    *,
+    include_back: bool = True,
 ) -> discord.ui.LayoutView:
-    """Wrap the container in a LayoutView, adding a one-use back-button when applicable."""
-    lv = discord.ui.LayoutView(timeout=None)
-    lv.add_item(container)
+    """Build the full LayoutView for an RP result, back-button inside the container."""
+    back_button: discord.ui.Button | None = None
 
-    if target is not None and target.id != author.id and action in _BACK_LABELS:
+    if include_back and target is not None and target.id != author.id and action in _BACK_LABELS:
         label, emoji = _BACK_LABELS[action]
-        btn = discord.ui.Button(
+        back_button = discord.ui.Button(
             label=label,
             emoji=emoji,
             style=discord.ButtonStyle.primary,
             custom_id=f"rp_back:{action}:{author.id}:{target.id}",
         )
-        lv.add_item(discord.ui.ActionRow(btn))
 
+    container = _build_rp_container(action, author, target, emoji_loader, gif_url, back_button)
+    lv = discord.ui.LayoutView(timeout=None)
+    lv.add_item(container)
     return lv
 
 
@@ -200,9 +209,18 @@ def _build_action_picker(
     target: discord.Member | discord.User,
     emoji_loader: EmojiLoader,
 ) -> discord.ui.LayoutView:
-    """Ephemeral CV2 layout with an action select menu aimed at *target*."""
+    """Ephemeral CV2 layout — action select inside the container."""
     flower = emoji_loader.get("flower")
     sparkle = emoji_loader.get("sparkle")
+
+    select = discord.ui.Select(
+        placeholder="🌸 Pick an action…",
+        custom_id=f"rp_action_select:{target.id}",
+        options=[
+            discord.SelectOption(label=label, value=action, emoji=emoji)
+            for action, label, emoji in _SELECT_ACTIONS
+        ],
+    )
 
     container = discord.ui.Container(
         discord.ui.Section(
@@ -215,22 +233,12 @@ def _build_action_picker(
             ),
         ),
         discord.ui.Separator(),
-        discord.ui.TextDisplay("-# Select an action from the menu below"),
+        discord.ui.ActionRow(select),
         accent_color=discord.Color(config.PASTEL_PINK),
-    )
-
-    select = discord.ui.Select(
-        placeholder="🌸 Pick an action…",
-        custom_id=f"rp_action_select:{target.id}",
-        options=[
-            discord.SelectOption(label=label, value=action, emoji=emoji)
-            for action, label, emoji in _SELECT_ACTIONS
-        ],
     )
 
     lv = discord.ui.LayoutView(timeout=120)
     lv.add_item(container)
-    lv.add_item(discord.ui.ActionRow(select))
     return lv
 
 
@@ -263,7 +271,7 @@ class RP(commands.Cog):
         for menu in self._ctx_menus:
             self.bot.tree.remove_command(menu.name, type=menu.type)
 
-    # ── context menu: single Actions picker ───────────────────────────────────
+    # ── context menu ──────────────────────────────────────────────────────────
 
     async def _ctx_actions(
         self, interaction: discord.Interaction, member: discord.User
@@ -311,7 +319,6 @@ class RP(commands.Cog):
         if action not in RP_LINES:
             return
 
-        # Fetch target user
         try:
             target = await self.bot.fetch_user(int(target_id_str))
         except Exception:
@@ -323,29 +330,25 @@ class RP(commands.Cog):
         loader = self._loader()
         sparkle = loader.get("sparkle")
 
-        # Acknowledge the select by updating the ephemeral picker
-        sent_container = discord.ui.Container(
+        # Update the ephemeral picker to confirm dispatch
+        ack_container = discord.ui.Container(
             discord.ui.TextDisplay(
                 f"{sparkle} Sending your **{action}** to {target.mention}…"
             ),
             accent_color=discord.Color(config.PASTEL_PINK),
         )
-        sent_lv = discord.ui.LayoutView()
-        sent_lv.add_item(sent_container)
-        await interaction.response.edit_message(view=sent_lv)
+        ack_lv = discord.ui.LayoutView()
+        ack_lv.add_item(ack_container)
+        await interaction.response.edit_message(view=ack_lv)
 
-        # Fetch gif and build the public RP message
         gif_url = await _fetch_gif(action)
-        container = _build_rp_container(action, interaction.user, target, loader, gif_url)
         await database.log_rp(
             str(interaction.user.id),
             action,
             target_id_str,
             str(interaction.guild_id) if interaction.guild_id else None,
         )
-        lv = _build_rp_view(action, interaction.user, target, container)
-
-        # Send as a public follow-up in the same channel
+        lv = _build_rp_view(action, interaction.user, target, gif_url, loader)
         await interaction.followup.send(view=lv, ephemeral=False)
 
     async def _handle_back_button(
@@ -358,7 +361,6 @@ class RP(commands.Cog):
             return
         _, action, author_id_str, target_id_str = parts
 
-        # Only the original target may press this button
         if str(interaction.user.id) != target_id_str:
             await interaction.response.send_message(
                 "This button is only for the person who was targeted~ 🌸",
@@ -368,17 +370,13 @@ class RP(commands.Cog):
 
         loader = self._loader()
 
-        # Disable the button on the original message so it cannot be used again
-        original_msg = interaction.message
-        if original_msg is not None:
+        # Disable the button on the original message
+        if interaction.message is not None:
             try:
-                original_author_tmp = await self.bot.fetch_user(int(author_id_str))
+                orig_author = await self.bot.fetch_user(int(author_id_str))
             except Exception:
-                original_author_tmp = interaction.user
+                orig_author = interaction.user
 
-            orig_container = _build_rp_container(
-                action, original_author_tmp, interaction.user, loader
-            )
             disabled_btn = discord.ui.Button(
                 label=_BACK_LABELS[action][0],
                 emoji=_BACK_LABELS[action][1],
@@ -386,32 +384,32 @@ class RP(commands.Cog):
                 custom_id=custom_id,
                 disabled=True,
             )
+            orig_container = _build_rp_container(
+                action, orig_author, interaction.user, loader, back_button=disabled_btn
+            )
             disabled_lv = discord.ui.LayoutView(timeout=None)
             disabled_lv.add_item(orig_container)
-            disabled_lv.add_item(discord.ui.ActionRow(disabled_btn))
             try:
-                await original_msg.edit(view=disabled_lv)
+                await interaction.message.edit(view=disabled_lv)
             except Exception:
                 pass
 
-        # Fetch original author for use as new target
         try:
             new_target = await self.bot.fetch_user(int(author_id_str))
         except Exception:
             new_target = None
 
         gif_url = await _fetch_gif(action)
-        container = _build_rp_container(action, interaction.user, new_target, loader, gif_url)
         await database.log_rp(
             str(interaction.user.id),
             action,
             author_id_str,
             str(interaction.guild_id) if interaction.guild_id else None,
         )
-
-        # Reply without a back-button to stop the chain
-        lv = discord.ui.LayoutView(timeout=None)
-        lv.add_item(container)
+        # Reply without back-button to stop the chain
+        lv = _build_rp_view(
+            action, interaction.user, new_target, gif_url, loader, include_back=False
+        )
         await interaction.response.send_message(view=lv)
 
     # ── hybrid commands ────────────────────────────────────────────────────────
@@ -424,14 +422,13 @@ class RP(commands.Cog):
     ) -> None:
         loader = self._loader()
         gif_url = await _fetch_gif(action)
-        container = _build_rp_container(action, ctx.author, target, loader, gif_url)
         await database.log_rp(
             str(ctx.author.id),
             action,
             str(target.id) if target else None,
             str(ctx.guild.id) if ctx.guild else None,
         )
-        lv = _build_rp_view(action, ctx.author, target, container)
+        lv = _build_rp_view(action, ctx.author, target, gif_url, loader)
         await ctx.send(view=lv)
 
     @commands.hybrid_command(name="hug", description="Give someone a warm hug! 🫂")

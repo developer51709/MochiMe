@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import secrets
 
 import discord
 from discord import app_commands
@@ -51,63 +52,163 @@ def _success_container(
     )
 
 
-class ConfirmView(discord.ui.LayoutView):
-    def __init__(
-        self,
-        emoji_loader: EmojiLoader,
-        action: str,
-        target: discord.Member,
-        reason: str,
-        callback,
-    ) -> None:
-        super().__init__(timeout=60)
-        self.emoji_loader = emoji_loader
-        self.action = action
-        self.target = target
-        self.reason = reason
-        self._callback = callback
-        self.confirmed = False
-
-        warning = emoji_loader.get("warning")
-        shield = emoji_loader.get("shield")
-
-        container = discord.ui.Container(
-            discord.ui.TextDisplay(
-                f"## {warning} Confirm {action}\n\n"
-                f"{shield} **Target:** {target.mention} (`{target}`)\n"
-                f"{shield} **Reason:** {reason}\n\n"
-                "Are you sure you want to do this?"
+def _confirm_container(
+    emoji_loader: EmojiLoader,
+    action: str,
+    target: discord.Member,
+    reason: str,
+    token: str,
+) -> discord.ui.Container:
+    warning = emoji_loader.get("warning")
+    shield = emoji_loader.get("shield")
+    return discord.ui.Container(
+        discord.ui.TextDisplay(
+            f"## {warning} Confirm {action}\n\n"
+            f"{shield} **Target:** {target.mention} (`{target}`)\n"
+            f"{shield} **Reason:** {reason}\n\n"
+            "Are you sure you want to do this?"
+        ),
+        discord.ui.Separator(),
+        discord.ui.ActionRow(
+            discord.ui.Button(
+                label="Confirm",
+                style=discord.ButtonStyle.danger,
+                custom_id=f"mod_confirm:{token}",
             ),
-            discord.ui.Separator(),
-            accent_color=discord.Color(config.PASTEL_PEACH),
-        )
-        self.add_item(container)
+            discord.ui.Button(
+                label="Cancel",
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"mod_cancel:{token}",
+            ),
+        ),
+        accent_color=discord.Color(config.PASTEL_PEACH),
+    )
 
-    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger, custom_id="mod_confirm")
-    async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        self.confirmed = True
-        self.stop()
-        await self._callback(interaction)
 
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary, custom_id="mod_cancel")
-    async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        cross = self.emoji_loader.get("cross")
-        self.stop()
-        cancel_container = discord.ui.Container(
-            discord.ui.TextDisplay(f"## {cross} Cancelled\nNo action was taken."),
-            accent_color=discord.Color(config.PASTEL_BLUE),
-        )
-        await interaction.response.edit_message(view=_cv2(cancel_container))
+def _disabled_confirm_container(
+    emoji_loader: EmojiLoader,
+    action: str,
+    target: discord.Member,
+    reason: str,
+) -> discord.ui.Container:
+    warning = emoji_loader.get("warning")
+    shield = emoji_loader.get("shield")
+    return discord.ui.Container(
+        discord.ui.TextDisplay(
+            f"## {warning} Confirm {action}\n\n"
+            f"{shield} **Target:** {target.mention} (`{target}`)\n"
+            f"{shield} **Reason:** {reason}\n\n"
+            "Are you sure you want to do this?"
+        ),
+        discord.ui.Separator(),
+        discord.ui.ActionRow(
+            discord.ui.Button(
+                label="Confirm",
+                style=discord.ButtonStyle.danger,
+                custom_id="mod_confirm:disabled",
+                disabled=True,
+            ),
+            discord.ui.Button(
+                label="Cancel",
+                style=discord.ButtonStyle.secondary,
+                custom_id="mod_cancel:disabled",
+                disabled=True,
+            ),
+        ),
+        accent_color=discord.Color(config.PASTEL_PEACH),
+    )
 
 
 class Moderation(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
+        # Maps token → {"callback", "loader", "action", "target", "reason"}
+        self._pending: dict[str, dict] = {}
 
     def _loader(self) -> EmojiLoader:
         cog = self.bot.get_cog("EmojiLoader")
         assert isinstance(cog, EmojiLoader)
         return cog
+
+    async def _send_confirm(
+        self,
+        ctx: commands.Context,
+        loader: EmojiLoader,
+        action: str,
+        target: discord.Member,
+        reason: str,
+        callback,
+    ) -> None:
+        token = secrets.token_hex(8)
+        self._pending[token] = {
+            "callback": callback,
+            "loader": loader,
+            "action": action,
+            "target": target,
+            "reason": reason,
+        }
+        container = _confirm_container(loader, action, target, reason, token)
+        lv = discord.ui.LayoutView(timeout=60)
+        lv.add_item(container)
+        await ctx.send(view=lv)
+
+    @commands.Cog.listener()
+    async def on_interaction(self, interaction: discord.Interaction) -> None:
+        if interaction.type != discord.InteractionType.component:
+            return
+        data = interaction.data or {}
+        custom_id: str = data.get("custom_id", "")
+
+        if custom_id.startswith("mod_confirm:") or custom_id.startswith("mod_cancel:"):
+            await self._handle_confirm_interaction(interaction, custom_id)
+
+    async def _handle_confirm_interaction(
+        self, interaction: discord.Interaction, custom_id: str
+    ) -> None:
+        parts = custom_id.split(":", 1)
+        if len(parts) != 2:
+            return
+        action_type, token = parts
+
+        if token == "disabled":
+            return
+
+        pending = self._pending.pop(token, None)
+        if pending is None:
+            await interaction.response.send_message(
+                "This confirmation has already been handled or expired~ 🌸",
+                ephemeral=True,
+            )
+            return
+
+        loader: EmojiLoader = pending["loader"]
+        action: str = pending["action"]
+        target: discord.Member = pending["target"]
+        reason: str = pending["reason"]
+
+        # Disable the buttons on the original message first
+        if interaction.message:
+            disabled_container = _disabled_confirm_container(loader, action, target, reason)
+            disabled_lv = discord.ui.LayoutView()
+            disabled_lv.add_item(disabled_container)
+            try:
+                await interaction.message.edit(view=disabled_lv)
+            except Exception:
+                pass
+
+        if action_type == "mod_cancel":
+            cross = loader.get("cross")
+            cancel_container = discord.ui.Container(
+                discord.ui.TextDisplay(f"## {cross} Cancelled\nNo action was taken."),
+                accent_color=discord.Color(config.PASTEL_BLUE),
+            )
+            await interaction.response.send_message(view=_cv2(cancel_container), ephemeral=True)
+            return
+
+        # mod_confirm
+        await pending["callback"](interaction)
+
+    # ── moderation commands ───────────────────────────────────────────────────
 
     @commands.hybrid_command(name="ban", description="Ban a member from the server")
     @app_commands.describe(target="Member to ban", reason="Reason for the ban")
@@ -130,7 +231,7 @@ class Moderation(commands.Cog):
                     str(ctx.guild.id), str(ctx.author.id), str(target.id), "ban", reason
                 )
                 success = _success_container(loader, "Ban", target, reason, ctx.author)
-                await interaction.response.edit_message(view=_cv2(success))
+                await interaction.response.send_message(view=_cv2(success), ephemeral=True)
             except discord.Forbidden:
                 cross = loader.get("cross")
                 err = discord.ui.Container(
@@ -139,10 +240,9 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
-                await interaction.response.edit_message(view=_cv2(err))
+                await interaction.response.send_message(view=_cv2(err), ephemeral=True)
 
-        view = ConfirmView(loader, "Ban", target, reason, do_ban)
-        await ctx.send(view=view)
+        await self._send_confirm(ctx, loader, "Ban", target, reason, do_ban)
 
     @commands.hybrid_command(name="kick", description="Kick a member from the server")
     @app_commands.describe(target="Member to kick", reason="Reason for the kick")
@@ -165,7 +265,7 @@ class Moderation(commands.Cog):
                     str(ctx.guild.id), str(ctx.author.id), str(target.id), "kick", reason
                 )
                 success = _success_container(loader, "Kick", target, reason, ctx.author)
-                await interaction.response.edit_message(view=_cv2(success))
+                await interaction.response.send_message(view=_cv2(success), ephemeral=True)
             except discord.Forbidden:
                 cross = loader.get("cross")
                 err = discord.ui.Container(
@@ -174,10 +274,9 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
-                await interaction.response.edit_message(view=_cv2(err))
+                await interaction.response.send_message(view=_cv2(err), ephemeral=True)
 
-        view = ConfirmView(loader, "Kick", target, reason, do_kick)
-        await ctx.send(view=view)
+        await self._send_confirm(ctx, loader, "Kick", target, reason, do_kick)
 
     @commands.hybrid_command(name="mute", description="Timeout a member (up to 28 days)")
     @app_commands.describe(
@@ -218,7 +317,7 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_GREEN),
                 )
-                await interaction.response.edit_message(view=_cv2(success))
+                await interaction.response.send_message(view=_cv2(success), ephemeral=True)
             except discord.Forbidden:
                 cross = loader.get("cross")
                 err = discord.ui.Container(
@@ -227,10 +326,9 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
-                await interaction.response.edit_message(view=_cv2(err))
+                await interaction.response.send_message(view=_cv2(err), ephemeral=True)
 
-        view = ConfirmView(loader, f"Mute ({duration}m)", target, reason, do_mute)
-        await ctx.send(view=view)
+        await self._send_confirm(ctx, loader, f"Mute ({duration}m)", target, reason, do_mute)
 
     @commands.hybrid_command(name="warn", description="Warn a member")
     @app_commands.describe(target="Member to warn", reason="Reason for the warning")
@@ -274,10 +372,9 @@ class Moderation(commands.Cog):
                 await target.send(view=_cv2(dm_container))
             except discord.Forbidden:
                 pass
-            await interaction.response.edit_message(view=_cv2(success))
+            await interaction.response.send_message(view=_cv2(success), ephemeral=True)
 
-        view = ConfirmView(loader, "Warn", target, reason, do_warn)
-        await ctx.send(view=view)
+        await self._send_confirm(ctx, loader, "Warn", target, reason, do_warn)
 
     @ban.error
     @kick.error
