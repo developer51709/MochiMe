@@ -12,6 +12,8 @@ PASTEL_GREEN = 0xB3FFD9
 PASTEL_YELLOW = 0xFFF5B3
 PASTEL_PEACH = 0xFFCDB3
 
+PASTEL_LAVENDER = 0xDDB3FF
+
 FALLBACK_EMOJIS: dict[str, str] = {
     "heart": "🩷",
     "star": "⭐",
@@ -49,6 +51,15 @@ FALLBACK_EMOJIS: dict[str, str] = {
     "lock": "🔒",
     "unlock": "🔓",
     "pin": "📌",
+    "trophy": "🏆",
+    "crystal_ball": "🔮",
+    "dice": "🎲",
+    "chart": "📊",
+    "bolt": "⚡",
+    "coin": "🪙",
+    "level_up": "🌟",
+    "rank": "🌸",
+    "confetti": "🎉",
 }
 
 BOOT_BANNER = """

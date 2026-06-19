@@ -18,6 +18,35 @@ async def get_db() -> aiosqlite.Connection:
 async def init_db() -> None:
     db = await get_db()
     await db.executescript("""
+        CREATE TABLE IF NOT EXISTS user_levels (
+            user_id   TEXT NOT NULL,
+            guild_id  TEXT NOT NULL,
+            xp        INTEGER NOT NULL DEFAULT 0,
+            level     INTEGER NOT NULL DEFAULT 0,
+            messages  INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (user_id, guild_id)
+        );
+
+        CREATE TABLE IF NOT EXISTS polls (
+            message_id  TEXT PRIMARY KEY,
+            channel_id  TEXT NOT NULL,
+            guild_id    TEXT NOT NULL,
+            author_id   TEXT NOT NULL,
+            question    TEXT NOT NULL,
+            options     TEXT NOT NULL,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            active      INTEGER NOT NULL DEFAULT 1
+        );
+
+        CREATE TABLE IF NOT EXISTS poll_votes (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id  TEXT NOT NULL,
+            user_id     TEXT NOT NULL,
+            option_idx  INTEGER NOT NULL,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (message_id, user_id)
+        );
+
         CREATE TABLE IF NOT EXISTS emojis (
             id        INTEGER PRIMARY KEY AUTOINCREMENT,
             name      TEXT    NOT NULL UNIQUE,
@@ -158,3 +187,147 @@ async def close_db() -> None:
     if _db is not None:
         await _db.close()
         _db = None
+
+
+# ── levels ────────────────────────────────────────────────────────────────────
+
+import math as _math
+
+
+def _level_from_xp(xp: int) -> int:
+    return int(_math.isqrt(xp // 100))
+
+
+def _xp_for_level(level: int) -> int:
+    return level * level * 100
+
+
+async def get_user_level(user_id: str, guild_id: str) -> aiosqlite.Row | None:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM user_levels WHERE user_id = ? AND guild_id = ?",
+        (user_id, guild_id),
+    ) as cur:
+        return await cur.fetchone()
+
+
+async def add_user_xp(
+    user_id: str, guild_id: str, xp_gain: int
+) -> tuple[int, int, bool]:
+    """Add XP, update level. Returns (new_xp, new_level, leveled_up)."""
+    db = await get_db()
+
+    row = await get_user_level(user_id, guild_id)
+    old_level = row["level"] if row else 0
+    old_xp = row["xp"] if row else 0
+
+    new_xp = old_xp + xp_gain
+    new_level = _level_from_xp(new_xp)
+
+    await db.execute(
+        """
+        INSERT INTO user_levels (user_id, guild_id, xp, level, messages)
+        VALUES (?, ?, ?, ?, 1)
+        ON CONFLICT(user_id, guild_id) DO UPDATE SET
+            xp       = excluded.xp,
+            level    = excluded.level,
+            messages = messages + 1
+        """,
+        (user_id, guild_id, new_xp, new_level),
+    )
+    await db.commit()
+    return new_xp, new_level, new_level > old_level
+
+
+async def get_guild_leaderboard(guild_id: str, limit: int = 10) -> list[aiosqlite.Row]:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM user_levels WHERE guild_id = ? ORDER BY xp DESC LIMIT ?",
+        (guild_id, limit),
+    ) as cur:
+        return await cur.fetchall()
+
+
+async def get_user_rank(user_id: str, guild_id: str) -> int:
+    db = await get_db()
+    async with db.execute(
+        """
+        SELECT COUNT(*) + 1 AS rank FROM user_levels
+        WHERE guild_id = ? AND xp > (
+            SELECT COALESCE(xp, 0) FROM user_levels
+            WHERE user_id = ? AND guild_id = ?
+        )
+        """,
+        (guild_id, user_id, guild_id),
+    ) as cur:
+        row = await cur.fetchone()
+        return row[0] if row else 1
+
+
+# ── polls ─────────────────────────────────────────────────────────────────────
+
+import json as _json
+
+
+async def create_poll(
+    message_id: str,
+    channel_id: str,
+    guild_id: str,
+    author_id: str,
+    question: str,
+    options: list[str],
+) -> None:
+    db = await get_db()
+    await db.execute(
+        "INSERT INTO polls (message_id, channel_id, guild_id, author_id, question, options) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (message_id, channel_id, guild_id, author_id, question, _json.dumps(options)),
+    )
+    await db.commit()
+
+
+async def get_poll(message_id: str) -> aiosqlite.Row | None:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM polls WHERE message_id = ?", (message_id,)
+    ) as cur:
+        return await cur.fetchone()
+
+
+async def get_user_vote(message_id: str, user_id: str) -> int | None:
+    db = await get_db()
+    async with db.execute(
+        "SELECT option_idx FROM poll_votes WHERE message_id = ? AND user_id = ?",
+        (message_id, user_id),
+    ) as cur:
+        row = await cur.fetchone()
+        return row["option_idx"] if row else None
+
+
+async def cast_vote(message_id: str, user_id: str, option_idx: int) -> bool:
+    """Record a vote. Returns True if successful, False if user already voted."""
+    db = await get_db()
+    try:
+        await db.execute(
+            "INSERT INTO poll_votes (message_id, user_id, option_idx) VALUES (?, ?, ?)",
+            (message_id, user_id, option_idx),
+        )
+        await db.commit()
+        return True
+    except Exception:
+        return False
+
+
+async def get_vote_counts(message_id: str, num_options: int) -> list[int]:
+    db = await get_db()
+    counts = [0] * num_options
+    async with db.execute(
+        "SELECT option_idx, COUNT(*) AS cnt FROM poll_votes "
+        "WHERE message_id = ? GROUP BY option_idx",
+        (message_id,),
+    ) as cur:
+        async for row in cur:
+            idx = row["option_idx"]
+            if 0 <= idx < num_options:
+                counts[idx] = row["cnt"]
+    return counts
