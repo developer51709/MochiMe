@@ -9,6 +9,13 @@ import database
 from cogs.emoji_loader import EmojiLoader
 
 
+def _cv2(*items: discord.ui.Component) -> discord.ui.LayoutView:
+    lv = discord.ui.LayoutView()
+    for item in items:
+        lv.add_item(item)
+    return lv
+
+
 COSMETICS: dict[str, dict[str, str]] = {
     "sakura": {"name": "Sakura Bloom", "desc": "Soft pink petals drift around you", "emoji": "flower"},
     "moonlight": {"name": "Moonlight Glow", "desc": "A gentle silver aura surrounds you", "emoji": "moon"},
@@ -33,9 +40,6 @@ class ServerFeatures(commands.Cog):
         cog = self.bot.get_cog("EmojiLoader")
         assert isinstance(cog, EmojiLoader)
         return cog
-
-    def _require_guild(self, ctx: commands.Context) -> bool:
-        return ctx.guild is not None
 
     @commands.hybrid_command(name="server", description="Show MochiMe server panel")
     @commands.guild_only()
@@ -75,10 +79,7 @@ class ServerFeatures(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_BLUE),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="settings", description="Configure MochiMe for this server")
     @commands.guild_only()
@@ -102,10 +103,7 @@ class ServerFeatures(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="setrp", description="Set the RP channel")
     @app_commands.describe(channel="The channel to designate as RP room")
@@ -125,10 +123,7 @@ class ServerFeatures(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="setlog", description="Set the moderation log channel")
     @app_commands.describe(channel="The channel for moderation logs")
@@ -148,10 +143,7 @@ class ServerFeatures(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="setmodrole", description="Set the moderator role")
     @app_commands.describe(role="The role to designate as moderators")
@@ -169,10 +161,7 @@ class ServerFeatures(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="cosmetics", description="Browse server cosmetics")
     @commands.guild_only()
@@ -192,10 +181,7 @@ class ServerFeatures(commands.Cog):
             discord.ui.TextDisplay("\n".join(lines)),
             accent_color=discord.Color(config.PASTEL_PEACH),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="pets", description="Browse server-bound pets")
     @commands.guild_only()
@@ -215,10 +201,7 @@ class ServerFeatures(commands.Cog):
             discord.ui.TextDisplay("\n".join(lines)),
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
 
 async def setup(bot: commands.Bot) -> None:

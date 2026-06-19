@@ -8,6 +8,13 @@ import config
 from cogs.emoji_loader import EmojiLoader
 
 
+def _cv2(*items: discord.ui.Component) -> discord.ui.LayoutView:
+    lv = discord.ui.LayoutView()
+    for item in items:
+        lv.add_item(item)
+    return lv
+
+
 CATEGORIES: dict[str, dict] = {
     "general": {
         "label": "🌸 General",
@@ -124,21 +131,19 @@ class CategorySelect(discord.ui.Select):
         selected = self.values[0]
         cat_container = build_category_container(selected, self.emoji_loader)
         select_row = discord.ui.ActionRow(CategorySelect(self.emoji_loader))
-
         await interaction.response.edit_message(
-            components=[cat_container, select_row],
+            view=_cv2(cat_container, select_row),
         )
 
 
-class HelpView(discord.ui.View):
+class HelpLayoutView(discord.ui.LayoutView):
     def __init__(self, emoji_loader: EmojiLoader) -> None:
         super().__init__(timeout=300)
         self.emoji_loader = emoji_loader
-
-    def build_components(self) -> list[discord.ui.Component]:
-        main = build_main_container(self.emoji_loader)
-        row = discord.ui.ActionRow(CategorySelect(self.emoji_loader))
-        return [main, row]
+        main = build_main_container(emoji_loader)
+        row = discord.ui.ActionRow(CategorySelect(emoji_loader))
+        self.add_item(main)
+        self.add_item(row)
 
 
 class Help(commands.Cog):
@@ -153,12 +158,7 @@ class Help(commands.Cog):
     @commands.hybrid_command(name="help", description="Show the MochiMe help menu")
     async def help_cmd(self, ctx: commands.Context) -> None:
         loader = self._get_emoji_loader()
-        view = HelpView(loader)
-        components = view.build_components()
-        await ctx.send(
-            components=components,
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=HelpLayoutView(loader))
 
     @commands.hybrid_command(name="ping", description="Check the bot's latency")
     async def ping(self, ctx: commands.Context) -> None:
@@ -172,10 +172,7 @@ class Help(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="about", description="About MochiMe")
     async def about(self, ctx: commands.Context) -> None:
@@ -204,10 +201,7 @@ class Help(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     @commands.hybrid_command(name="info", description="Show server information")
     @commands.guild_only()
@@ -232,10 +226,7 @@ class Help(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_BLUE),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -11,6 +11,13 @@ import database
 from cogs.emoji_loader import EmojiLoader
 
 
+def _cv2(*items: discord.ui.Component) -> discord.ui.LayoutView:
+    lv = discord.ui.LayoutView()
+    for item in items:
+        lv.add_item(item)
+    return lv
+
+
 def _missing_perm_container(emoji_loader: EmojiLoader, perm: str) -> discord.ui.Container:
     cross = emoji_loader.get("cross")
     return discord.ui.Container(
@@ -44,7 +51,7 @@ def _success_container(
     )
 
 
-class ConfirmView(discord.ui.View):
+class ConfirmView(discord.ui.LayoutView):
     def __init__(
         self,
         emoji_loader: EmojiLoader,
@@ -61,34 +68,20 @@ class ConfirmView(discord.ui.View):
         self._callback = callback
         self.confirmed = False
 
-    def confirmation_components(self) -> list[discord.ui.Component]:
-        warning = self.emoji_loader.get("warning")
-        shield = self.emoji_loader.get("shield")
-        cross = self.emoji_loader.get("cross")
+        warning = emoji_loader.get("warning")
+        shield = emoji_loader.get("shield")
 
         container = discord.ui.Container(
             discord.ui.TextDisplay(
-                f"## {warning} Confirm {self.action}\n\n"
-                f"{shield} **Target:** {self.target.mention} (`{self.target}`)\n"
-                f"{shield} **Reason:** {self.reason}\n\n"
+                f"## {warning} Confirm {action}\n\n"
+                f"{shield} **Target:** {target.mention} (`{target}`)\n"
+                f"{shield} **Reason:** {reason}\n\n"
                 "Are you sure you want to do this?"
             ),
             discord.ui.Separator(),
-            discord.ui.ActionRow(
-                discord.ui.Button(
-                    label=f"Confirm {self.action}",
-                    style=discord.ButtonStyle.danger,
-                    custom_id="mod_confirm",
-                ),
-                discord.ui.Button(
-                    label="Cancel",
-                    style=discord.ButtonStyle.secondary,
-                    custom_id="mod_cancel",
-                ),
-            ),
             accent_color=discord.Color(config.PASTEL_PEACH),
         )
-        return [container]
+        self.add_item(container)
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger, custom_id="mod_confirm")
     async def confirm_btn(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -104,9 +97,7 @@ class ConfirmView(discord.ui.View):
             discord.ui.TextDisplay(f"## {cross} Cancelled\nNo action was taken."),
             accent_color=discord.Color(config.PASTEL_BLUE),
         )
-        await interaction.response.edit_message(
-            components=[cancel_container],
-        )
+        await interaction.response.edit_message(view=_cv2(cancel_container))
 
 
 class Moderation(commands.Cog):
@@ -117,18 +108,6 @@ class Moderation(commands.Cog):
         cog = self.bot.get_cog("EmojiLoader")
         assert isinstance(cog, EmojiLoader)
         return cog
-
-    async def _send_cv2(
-        self,
-        ctx: commands.Context,
-        components: list[discord.ui.Component],
-        view: discord.ui.View | None = None,
-    ) -> discord.Message:
-        return await ctx.send(
-            components=components,
-            view=view,
-            flags=discord.MessageFlags(components_v2=True),
-        )
 
     @commands.hybrid_command(name="ban", description="Ban a member from the server")
     @app_commands.describe(target="Member to ban", reason="Reason for the ban")
@@ -151,7 +130,7 @@ class Moderation(commands.Cog):
                     str(ctx.guild.id), str(ctx.author.id), str(target.id), "ban", reason
                 )
                 success = _success_container(loader, "Ban", target, reason, ctx.author)
-                await interaction.response.edit_message(components=[success])
+                await interaction.response.edit_message(view=_cv2(success))
             except discord.Forbidden:
                 cross = loader.get("cross")
                 err = discord.ui.Container(
@@ -160,10 +139,10 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
-                await interaction.response.edit_message(components=[err])
+                await interaction.response.edit_message(view=_cv2(err))
 
         view = ConfirmView(loader, "Ban", target, reason, do_ban)
-        await self._send_cv2(ctx, view.confirmation_components(), view)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="kick", description="Kick a member from the server")
     @app_commands.describe(target="Member to kick", reason="Reason for the kick")
@@ -186,7 +165,7 @@ class Moderation(commands.Cog):
                     str(ctx.guild.id), str(ctx.author.id), str(target.id), "kick", reason
                 )
                 success = _success_container(loader, "Kick", target, reason, ctx.author)
-                await interaction.response.edit_message(components=[success])
+                await interaction.response.edit_message(view=_cv2(success))
             except discord.Forbidden:
                 cross = loader.get("cross")
                 err = discord.ui.Container(
@@ -195,10 +174,10 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
-                await interaction.response.edit_message(components=[err])
+                await interaction.response.edit_message(view=_cv2(err))
 
         view = ConfirmView(loader, "Kick", target, reason, do_kick)
-        await self._send_cv2(ctx, view.confirmation_components(), view)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="mute", description="Timeout a member (up to 28 days)")
     @app_commands.describe(
@@ -239,7 +218,7 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_GREEN),
                 )
-                await interaction.response.edit_message(components=[success])
+                await interaction.response.edit_message(view=_cv2(success))
             except discord.Forbidden:
                 cross = loader.get("cross")
                 err = discord.ui.Container(
@@ -248,10 +227,10 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
-                await interaction.response.edit_message(components=[err])
+                await interaction.response.edit_message(view=_cv2(err))
 
         view = ConfirmView(loader, f"Mute ({duration}m)", target, reason, do_mute)
-        await self._send_cv2(ctx, view.confirmation_components(), view)
+        await ctx.send(view=view)
 
     @commands.hybrid_command(name="warn", description="Warn a member")
     @app_commands.describe(target="Member to warn", reason="Reason for the warning")
@@ -292,16 +271,13 @@ class Moderation(commands.Cog):
                     ),
                     accent_color=discord.Color(config.PASTEL_YELLOW),
                 )
-                await target.send(
-                    components=[dm_container],
-                    flags=discord.MessageFlags(components_v2=True),
-                )
+                await target.send(view=_cv2(dm_container))
             except discord.Forbidden:
                 pass
-            await interaction.response.edit_message(components=[success])
+            await interaction.response.edit_message(view=_cv2(success))
 
         view = ConfirmView(loader, "Warn", target, reason, do_warn)
-        await self._send_cv2(ctx, view.confirmation_components(), view)
+        await ctx.send(view=view)
 
     @ban.error
     @kick.error
@@ -331,10 +307,7 @@ class Moderation(commands.Cog):
         else:
             return
 
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
 
 async def setup(bot: commands.Bot) -> None:

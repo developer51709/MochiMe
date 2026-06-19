@@ -30,18 +30,22 @@ import config
 import console
 import database
 
-# patches must be imported before the Modal class body is evaluated so that
-# discord.ui.AttachmentInput exists at class-definition time.
 import patches  # noqa: F401
 from patches import AttachmentInput
 
 log = console.get_logger("cogs.welcome")
 
 
+def _cv2(*items: discord.ui.Component) -> discord.ui.LayoutView:
+    lv = discord.ui.LayoutView()
+    for item in items:
+        lv.add_item(item)
+    return lv
+
+
 # ─── template helpers ─────────────────────────────────────────────────────────
 
 def _render(template: str, member: discord.Member, guild: discord.Guild) -> str:
-    """Substitute {user}, {username}, {server}, {count} safely."""
     try:
         return template.format(
             user=member.mention,
@@ -54,7 +58,6 @@ def _render(template: str, member: discord.Member, guild: discord.Guild) -> str:
 
 
 def _parse_color(hex_str: str | None) -> int:
-    """Parse a hex color string; fall back to pastel pink."""
     if not hex_str:
         return config.PASTEL_PINK
     clean = re.sub(r"[^0-9a-fA-F]", "", hex_str)
@@ -118,16 +121,6 @@ def _build_welcome_card(
 # ─── setup modal ──────────────────────────────────────────────────────────────
 
 class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
-    """
-    Four-field modal powered by the AttachmentInput runtime patch.
-
-    Fields
-      welcome_title   — short text, supports template vars
-      welcome_message — paragraph, supports template vars
-      image_url       — AttachmentInput (patched TextInput with URL validation)
-      color_hex       — short hex string for accent color
-    """
-
     welcome_title = discord.ui.TextInput(
         label="Welcome Title",
         placeholder="Use {user}, {server}, {count}  e.g.  Welcome to {server}!",
@@ -217,8 +210,7 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
         await interaction.followup.send(
-            components=[info],
-            flags=discord.MessageFlags(components_v2=True),
+            view=_cv2(info),
             ephemeral=True,
         )
 
@@ -236,8 +228,6 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
 # ─── helper view for prefix modal trigger ─────────────────────────────────────
 
 class _OpenModalView(discord.ui.View):
-    """Button that opens WelcomeSetupModal; used when setwelcome is run as prefix."""
-
     def __init__(self, modal: WelcomeSetupModal) -> None:
         super().__init__(timeout=120)
         self.modal = modal
@@ -273,7 +263,6 @@ class Welcome(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        """Send a cute CV2 introduction when the bot is added to a new server."""
         channel = guild.system_channel
         if channel is None or not channel.permissions_for(guild.me).send_messages:
             channel = None
@@ -335,10 +324,7 @@ class Welcome(commands.Cog):
         )
 
         try:
-            await channel.send(
-                components=[container],
-                flags=discord.MessageFlags(components_v2=True),
-            )
+            await channel.send(view=_cv2(container))
             log.info("Sent guild-join intro to #%s in %s", channel.name, guild.name)
         except discord.Forbidden:
             log.warning(
@@ -378,10 +364,7 @@ class Welcome(commands.Cog):
         card = _build_welcome_card(member, guild, title, message, img, color, loader)
 
         try:
-            await channel.send(
-                components=[card],
-                flags=discord.MessageFlags(components_v2=True),
-            )
+            await channel.send(view=_cv2(card))
         except discord.Forbidden:
             log.warning(
                 "on_member_join: missing perms in #%s (%s)", channel.name, guild.name
@@ -404,9 +387,6 @@ class Welcome(commands.Cog):
         if ctx.interaction:
             await ctx.interaction.response.send_modal(modal)
         else:
-            # Prefix commands cannot open modals directly — send a plain button.
-            # (CV2 LayoutView and interactive View cannot be mixed; use a regular
-            # View here so the button handler works correctly.)
             view = _OpenModalView(modal)
             await ctx.send(
                 "🌸 Click **Open Setup Wizard** to configure your welcome message!",
@@ -439,10 +419,7 @@ class Welcome(commands.Cog):
             ),
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
     # ── setwelcomeimage (slash-only — discord.Attachment upload) ─────────────
 
@@ -469,8 +446,7 @@ class Welcome(commands.Cog):
                 accent_color=discord.Color(config.PASTEL_PEACH),
             )
             await interaction.response.send_message(
-                components=[err],
-                flags=discord.MessageFlags(components_v2=True),
+                view=_cv2(err),
                 ephemeral=True,
             )
             return
@@ -495,8 +471,7 @@ class Welcome(commands.Cog):
             accent_color=discord.Color(config.PASTEL_GREEN),
         )
         await interaction.response.send_message(
-            components=[confirm],
-            flags=discord.MessageFlags(components_v2=True),
+            view=_cv2(confirm),
             ephemeral=True,
         )
         log.info(
@@ -543,10 +518,7 @@ class Welcome(commands.Cog):
             card,
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
-        await ctx.send(
-            components=[wrapper],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(wrapper))
 
     # ── togglewelcome ─────────────────────────────────────────────────────────
 
@@ -581,10 +553,7 @@ class Welcome(commands.Cog):
             ),
             accent_color=discord.Color(color),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
 
 # ─── setup ────────────────────────────────────────────────────────────────────

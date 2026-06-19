@@ -11,13 +11,9 @@ import config
 import database
 from cogs.emoji_loader import EmojiLoader
 
-# nekos.best — free, no-auth anime GIF API (primary)
 NEKOS_BEST_BASE = "https://nekos.best/api/v2/{action}"
-
-# waifu.pics — fallback
 WAIFU_PICS_BASE = "https://api.waifu.pics/sfw/{action}"
 
-# nekos.best uses different names for some actions
 _NEKOS_ACTION_MAP: dict[str, str] = {
     "hug":    "hug",
     "pat":    "pat",
@@ -28,7 +24,6 @@ _NEKOS_ACTION_MAP: dict[str, str] = {
     "poke":   "poke",
 }
 
-# "Action back" button labels + emoji per action
 _BACK_LABELS: dict[str, tuple[str, str]] = {
     "hug":    ("Hug back",    "🫂"),
     "pat":    ("Pat back",    "🌸"),
@@ -103,7 +98,6 @@ RP_EMOJI_KEYS: dict[str, str] = {
     "poke":   "poke",
 }
 
-# Decorators for user-installed app + DM support
 _INSTALLS = app_commands.allowed_installs(guilds=True, users=True)
 _CONTEXTS = app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
 
@@ -175,8 +169,13 @@ def _build_rp_view(
     target: discord.Member | discord.User | None,
     container: discord.ui.Container,
 ) -> discord.ui.LayoutView:
-    """Wrap the container in a LayoutView, adding a back-button when there's a target."""
+    """
+    Wrap the container in a LayoutView.
+    Adds a one-use back-button when there is a valid target distinct from the author.
+    The button's custom_id encodes all info needed to handle the interaction.
+    """
     lv = discord.ui.LayoutView(timeout=None)
+    lv.add_item(container)
 
     if target is not None and target.id != author.id and action in _BACK_LABELS:
         label, emoji = _BACK_LABELS[action]
@@ -187,9 +186,7 @@ def _build_rp_view(
             custom_id=f"rp_back:{action}:{author.id}:{target.id}",
         )
         ar = discord.ui.ActionRow(btn)
-        container.add_item(ar)
-
-    lv.add_item(container)
+        lv.add_item(ar)
 
     return lv
 
@@ -260,13 +257,42 @@ class RP(commands.Cog):
             return
         _, action, author_id_str, target_id_str = parts
 
-        # Only the original target can press this button
+        # Only the original target may press this button
         if str(interaction.user.id) != target_id_str:
             await interaction.response.send_message(
-                "This button is only for the person who was hugged~ 🌸",
+                "This button is only for the person who was targeted~ 🌸",
                 ephemeral=True,
             )
             return
+
+        # Disable the button on the original message immediately so it cannot
+        # be clicked again while we process (and so it stays disabled forever).
+        original_msg = interaction.message
+        if original_msg is not None:
+            try:
+                disabled_btn = discord.ui.Button(
+                    label=_BACK_LABELS[action][0],
+                    emoji=_BACK_LABELS[action][1],
+                    style=discord.ButtonStyle.secondary,
+                    custom_id=custom_id,
+                    disabled=True,
+                )
+                # Rebuild original container (no gif needed for the "used" state)
+                try:
+                    original_author = await self.bot.fetch_user(int(author_id_str))
+                except Exception:
+                    original_author = None
+
+                loader = self._loader()
+                orig_container = _build_rp_container(
+                    action, original_author or interaction.user, interaction.user, loader
+                )
+                disabled_lv = discord.ui.LayoutView(timeout=None)
+                disabled_lv.add_item(orig_container)
+                disabled_lv.add_item(discord.ui.ActionRow(disabled_btn))
+                await original_msg.edit(view=disabled_lv)
+            except Exception:
+                pass
 
         # Fetch the original author to use as the new target
         try:
@@ -283,7 +309,10 @@ class RP(commands.Cog):
             author_id_str,
             str(interaction.guild_id) if interaction.guild_id else None,
         )
-        lv = _build_rp_view(action, interaction.user, new_target, container)
+
+        # Send the back-action response WITHOUT a button so there is no chain
+        lv = discord.ui.LayoutView(timeout=None)
+        lv.add_item(container)
         await interaction.response.send_message(view=lv)
 
     # ── context menus ──────────────────────────────────────────────────────────

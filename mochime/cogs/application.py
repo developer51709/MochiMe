@@ -9,6 +9,13 @@ import database
 from cogs.emoji_loader import EmojiLoader
 
 
+def _cv2(*items: discord.ui.Component) -> discord.ui.LayoutView:
+    lv = discord.ui.LayoutView()
+    for item in items:
+        lv.add_item(item)
+    return lv
+
+
 class Application(commands.Cog):
     """User-installable app commands and additional context menus."""
 
@@ -85,8 +92,7 @@ class Application(commands.Cog):
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
         await interaction.response.send_message(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
+            view=_cv2(container),
             ephemeral=True,
         )
 
@@ -101,14 +107,12 @@ class Application(commands.Cog):
 
         db = await database.get_db()
 
-        # Total RP actions given
         async with db.execute(
             "SELECT action, COUNT(*) as cnt FROM rp_stats WHERE user_id = ? GROUP BY action ORDER BY cnt DESC",
             (str(member.id),),
         ) as cur:
             given = [(row["action"], row["cnt"]) async for row in cur]
 
-        # Total RP actions received
         async with db.execute(
             "SELECT action, COUNT(*) as cnt FROM rp_stats WHERE target_id = ? GROUP BY action ORDER BY cnt DESC",
             (str(member.id),),
@@ -140,8 +144,7 @@ class Application(commands.Cog):
             accent_color=discord.Color(config.PASTEL_PINK),
         )
         await interaction.response.send_message(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
+            view=_cv2(container),
             ephemeral=True,
         )
 
@@ -150,7 +153,6 @@ class Application(commands.Cog):
     ) -> None:
         loader = self._loader()
 
-        # Only show mod history to moderators
         if interaction.guild and isinstance(interaction.user, discord.Member):
             if not interaction.user.guild_permissions.moderate_members:
                 cross = loader.get("cross")
@@ -162,8 +164,7 @@ class Application(commands.Cog):
                     accent_color=discord.Color(config.PASTEL_PEACH),
                 )
                 await interaction.response.send_message(
-                    components=[container],
-                    flags=discord.MessageFlags(components_v2=True),
+                    view=_cv2(container),
                     ephemeral=True,
                 )
                 return
@@ -199,8 +200,7 @@ class Application(commands.Cog):
             accent_color=discord.Color(config.PASTEL_BLUE),
         )
         await interaction.response.send_message(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
+            view=_cv2(container),
             ephemeral=True,
         )
 
@@ -239,10 +239,7 @@ class Application(commands.Cog):
             discord.ui.TextDisplay("\n".join(lines)),
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
-        await ctx.send(
-            components=[container],
-            flags=discord.MessageFlags(components_v2=True),
-        )
+        await ctx.send(view=_cv2(container))
 
 
 async def setup(bot: commands.Bot) -> None:
