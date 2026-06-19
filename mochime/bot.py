@@ -15,6 +15,7 @@ COGS = [
     "cogs.emoji_loader",
     "cogs.help",
     "cogs.rp",
+    "cogs.translate",
     "cogs.moderation",
     "cogs.application",
     "cogs.server_features",
