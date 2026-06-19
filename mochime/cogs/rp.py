@@ -412,6 +412,74 @@ class RP(commands.Cog):
         )
         await interaction.response.send_message(view=lv)
 
+    # ── cog-level error handler ───────────────────────────────────────────────
+
+    async def cog_command_error(
+        self, ctx: commands.Context, error: commands.CommandError
+    ) -> None:
+        # Unwrap HybridCommandError / CommandInvokeError to get the real cause
+        original: BaseException = error
+        while hasattr(original, "original"):
+            original = original.original  # type: ignore[union-attr]
+
+        # Interaction expired (10062) — Discord already dropped the token,
+        # there is no channel to respond to, so just log and return silently.
+        if isinstance(original, discord.NotFound) and getattr(original, "code", None) == 10062:
+            import console as _console
+            _console.get_logger("cogs.rp").warning(
+                "Interaction expired: cmd=%s user=%s", ctx.command, ctx.author
+            )
+            return
+
+        loader = self._loader()
+        cross = loader.get("cross")
+        ribbon = loader.get("ribbon")
+
+        if isinstance(error, commands.MissingRequiredArgument):
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Missing argument\n"
+                    f"`{error.param.name}` is required for this command.\n\n"
+                    f"{ribbon} *Example:* `mochi {ctx.command} @user`"
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+        elif isinstance(error, commands.BadArgument):
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Couldn't find that user\n"
+                    "Make sure you're mentioning a valid user~ 🌸"
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+        elif isinstance(error, commands.NoPrivateMessage):
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Server only\n"
+                    "This command can only be used inside a server."
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+        else:
+            import console as _console
+            _console.get_logger("cogs.rp").error(
+                "Unhandled RP error: cmd=%s error=%s", ctx.command, error
+            )
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Something went wrong\n"
+                    "An unexpected error occurred. Please try again~ 🌸"
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+
+        lv = discord.ui.LayoutView()
+        lv.add_item(container)
+        try:
+            await ctx.send(view=lv, ephemeral=True)
+        except discord.HTTPException:
+            pass
+
     # ── hybrid commands ────────────────────────────────────────────────────────
 
     async def _send_rp(
@@ -420,6 +488,10 @@ class RP(commands.Cog):
         action: str,
         target: discord.User | None = None,
     ) -> None:
+        # Defer immediately so Discord doesn't drop the interaction while we
+        # fetch the GIF (which can take up to 5 s and would cause a 10062 error).
+        await ctx.defer()
+
         loader = self._loader()
         gif_url = await _fetch_gif(action)
         await database.log_rp(

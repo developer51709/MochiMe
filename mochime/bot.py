@@ -82,29 +82,93 @@ class MochiMe(commands.Bot):
     async def on_command_error(
         self, ctx: commands.Context, error: commands.CommandError
     ) -> None:
+        # Always ignore these
         if isinstance(error, (commands.CommandNotFound, commands.NotOwner)):
             return
-        if isinstance(
-            error,
-            (commands.MissingPermissions, commands.BotMissingPermissions),
-        ):
+
+        # Cog-level or command-level handler already took care of it
+        if hasattr(ctx.command, "on_error"):
             return
+
+        # Unwrap HybridCommandError / CommandInvokeError to the root cause
+        original: BaseException = error
+        while hasattr(original, "original"):
+            original = original.original  # type: ignore[union-attr]
+
+        # Interaction token expired — Discord dropped it, nothing we can send
+        if isinstance(original, discord.NotFound) and getattr(original, "code", None) == 10062:
+            log.warning("Interaction expired: cmd=%s user=%s", ctx.command, ctx.author)
+            return
+
+        # Already handled by a cog-level error handler (cog_command_error)
+        if ctx.cog is not None and hasattr(ctx.cog, "cog_command_error"):
+            return
+
+        from cogs.emoji_loader import EmojiLoader as _EL
+        _loader = self.get_cog("EmojiLoader")
+        cross = _loader.get("cross") if isinstance(_loader, _EL) else "❌"  # type: ignore[union-attr]
+        ribbon = _loader.get("ribbon") if isinstance(_loader, _EL) else "🌸"  # type: ignore[union-attr]
+
+        container: discord.ui.Container | None = None
+
         if isinstance(error, commands.NoPrivateMessage):
-            loader = self.get_cog("EmojiLoader")
-            cross = loader.get("cross") if loader else "❌"
             container = discord.ui.Container(
                 discord.ui.TextDisplay(
-                    f"## {cross} Server Only\n"
-                    "This command can only be used in a server."
+                    f"## {cross} Server only\n"
+                    "This command can only be used inside a server."
                 ),
-                accent_color=discord.Color(0xFFCDB3),
+                accent_color=discord.Color(config.PASTEL_PEACH),
             )
-            await ctx.send(
-                components=[container],
-                flags=discord.MessageFlags(components_v2=True),
+        elif isinstance(error, commands.MissingPermissions):
+            perm = error.missing_permissions[0].replace("_", " ").title()
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Missing permission\n"
+                    f"You need the **{perm}** permission to use this command."
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
             )
+        elif isinstance(error, commands.BotMissingPermissions):
+            perm = error.missing_permissions[0].replace("_", " ").title()
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} I'm missing permissions\n"
+                    f"I need the **{perm}** permission to do that."
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+        elif isinstance(error, commands.CommandOnCooldown):
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Slow down!\n"
+                    f"Try again in `{error.retry_after:.1f}s`~ {ribbon}"
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+        elif isinstance(error, commands.DisabledCommand):
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {cross} Command disabled\n"
+                    "This command is currently unavailable."
+                ),
+                accent_color=discord.Color(config.PASTEL_PEACH),
+            )
+        elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument,
+                                commands.HybridCommandError, commands.CommandInvokeError)):
+            # These should be handled by the owning cog; log and bail quietly
+            log.error("Unhandled error in command %s: %s", ctx.command, original)
             return
-        log.error("Unhandled error in command %s: %s", ctx.command, error)
+        else:
+            log.error("Unhandled error in command %s: %s", ctx.command, error)
+            return
+
+        if container is not None:
+            lv = discord.ui.LayoutView()
+            lv.add_item(container)
+            try:
+                await ctx.send(view=lv, ephemeral=True)
+            except discord.HTTPException:
+                pass
 
     async def on_app_command_completion(
         self,
