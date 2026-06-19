@@ -14,6 +14,42 @@ from cogs.emoji_loader import EmojiLoader
 NEKOS_BEST_BASE = "https://nekos.best/api/v2/{action}"
 WAIFU_PICS_BASE = "https://api.waifu.pics/sfw/{action}"
 
+# MediaGallery component type integer (Discord CV2 spec)
+_MEDIA_GALLERY_TYPE = 12
+
+
+def _extract_gif_url(message: discord.Message) -> str | None:
+    """Walk a CV2 message's component tree and return the first MediaGallery URL."""
+
+    def _type_val(comp: object) -> int | None:
+        t = getattr(comp, "type", None)
+        if isinstance(t, int):
+            return t
+        if hasattr(t, "value"):
+            return int(t.value)
+        return None
+
+    def _walk(items: list) -> str | None:
+        for comp in items:
+            if _type_val(comp) == _MEDIA_GALLERY_TYPE:
+                for item in getattr(comp, "items", []):
+                    media = getattr(item, "media", None)
+                    url = getattr(media, "url", None) or getattr(media, "proxy_url", None)
+                    if url and str(url).startswith("http"):
+                        return str(url)
+            for attr in ("children", "components"):
+                sub = getattr(comp, attr, None)
+                if sub:
+                    result = _walk(sub)
+                    if result:
+                        return result
+        return None
+
+    try:
+        return _walk(message.components)
+    except Exception:
+        return None
+
 _NEKOS_ACTION_MAP: dict[str, str] = {
     "hug":    "hug",
     "pat":    "pat",
@@ -368,10 +404,17 @@ class RP(commands.Cog):
             )
             return
 
+        # Defer immediately — gif fetch can take up to 5 s and would cause
+        # a 10062 "Unknown interaction" error if we respond too late.
+        await interaction.response.defer()
+
         loader = self._loader()
 
-        # Disable the button on the original message
+        # Disable the button on the original message, keeping the gif intact
         if interaction.message is not None:
+            # Extract the gif URL already displayed so we don't lose it
+            existing_gif = _extract_gif_url(interaction.message)
+
             try:
                 orig_author = await self.bot.fetch_user(int(author_id_str))
             except Exception:
@@ -385,7 +428,9 @@ class RP(commands.Cog):
                 disabled=True,
             )
             orig_container = _build_rp_container(
-                action, orig_author, interaction.user, loader, back_button=disabled_btn
+                action, orig_author, interaction.user, loader,
+                gif_url=existing_gif,      # preserve the original gif
+                back_button=disabled_btn,
             )
             disabled_lv = discord.ui.LayoutView(timeout=None)
             disabled_lv.add_item(orig_container)
@@ -406,11 +451,11 @@ class RP(commands.Cog):
             author_id_str,
             str(interaction.guild_id) if interaction.guild_id else None,
         )
-        # Reply without back-button to stop the chain
+        # Reply without back-button to stop the chain; use followup after defer
         lv = _build_rp_view(
             action, interaction.user, new_target, gif_url, loader, include_back=False
         )
-        await interaction.response.send_message(view=lv)
+        await interaction.followup.send(view=lv)
 
     # ── cog-level error handler ───────────────────────────────────────────────
 
