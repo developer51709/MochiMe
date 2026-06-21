@@ -138,7 +138,7 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
         max_length=500,
     )
     image_file: FileInput = FileInput(
-        label="Banner Image (optional — upload a PNG/JPG/GIF/WebP)",
+        label="Banner Image (optional)",
         required=False,
     )
     color_hex = discord.ui.TextInput(
