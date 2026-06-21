@@ -123,7 +123,7 @@ def _build_welcome_card(
 class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
     welcome_title = discord.ui.TextInput(
         label="Welcome Title",
-        placeholder="Use {user}, {server}, {count}  e.g.  Welcome to {server}!",
+        placeholder="Use {user}, {server}, {count}",
         default="Welcome to {server}! \U0001f338",
         max_length=100,
     )
