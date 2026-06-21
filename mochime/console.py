@@ -60,12 +60,12 @@ def _paint(code: str, text: str) -> str:
 # ─────────────────────────────────────────────────────────
 
 _LOGO_LINES = [
-    r"  ___  ___         _     _  __  __      ",
-    r" |  \/  |         | |   (_)|  \/  |     ",
-    r" | .  . | ___  ___| |__  _ | .  . | ___ ",
-    r" | |\/| |/ _ \/ __| '_ \| || |\/| |/ _ \\",
-    r" | |  | | (_) \__ \ | | | || |  | |  __/",
-    r" \_|  |_/\___/|___/_| |_|_|\_|  |_/\___|",
+    r"  __  __           _     _  __  __       ",
+    r" |  \/  |         | |   (_)|  \/  |      ",
+    r" | .  . | ___  ___| |__  _ | .  . | ___  ",
+    r" | |\/| |/ _ \/  _| '_ \| || |\/| |/ _ \ ",
+    r" | |  | | (_) | (_| | | | || |  | |  __/ ",
+    r" \_|  |_/\___/\___|_| |_|_|\_|  |_/\___| ",
 ]
 
 
@@ -82,7 +82,7 @@ def print_banner(version: str = "1.0.0", prefix: str = "mochi ") -> None:
 
     for i, line in enumerate(_LOGO_LINES):
         col = C.PINK if i % 2 == 0 else C.PURPLE
-        print(f"  {vbar}  {_paint(C.BOLD + col, line.ljust(44))}  {vbar}")
+        print(f"  {vbar}  {_paint(C.BOLD + col, line.ljust(44))}{vbar}")
 
     sub = _paint(C.DIM + C.PINK, "cute  ·  pastel  ·  discord bot")
     print(f"  {vbar}      {'':>2}{sub:<52}     {vbar}")
