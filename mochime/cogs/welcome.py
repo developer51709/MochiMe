@@ -31,7 +31,7 @@ import console
 import database
 
 import patches  # noqa: F401
-from patches import AttachmentInput
+from patches import FileInput
 
 log = console.get_logger("cogs.welcome")
 
@@ -137,8 +137,9 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
         style=discord.TextStyle.paragraph,
         max_length=500,
     )
-    image_url: AttachmentInput = AttachmentInput(
-        label="Banner image URL (optional — direct https:// link)",
+    image_file: FileInput = FileInput(
+        label="Banner Image (optional — upload a PNG/JPG/GIF/WebP)",
+        required=False,
     )
     color_hex = discord.ui.TextInput(
         label="Accent color hex (optional — e.g. FFB3C6)",
@@ -156,18 +157,20 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await interaction.response.defer(ephemeral=True)
 
-        img_err = self.image_url.error_message()
-        if img_err:
+        attachment = self.image_file.attachment
+
+        # If something was uploaded but it isn't an image, reject it.
+        if attachment and not attachment.is_image:
             await interaction.followup.send(
-                f"⚠️ Invalid image URL: {img_err}\n"
-                "Please try `/setwelcome` again with a valid direct image link.",
+                "⚠️ That file doesn't look like an image.\n"
+                "Please attach a PNG, JPG, GIF, or WebP file and try again.",
                 ephemeral=True,
             )
             return
 
         title   = self.welcome_title.value.strip()
         message = self.welcome_message.value.strip()
-        img     = self.image_url.image_url or ""
+        img     = attachment.url if attachment else ""
         color   = _parse_color(self.color_hex.value.strip())
 
         await database.upsert_server_settings(
