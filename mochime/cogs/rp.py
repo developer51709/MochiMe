@@ -74,22 +74,41 @@ _NEKOS_ACTION_MAP: dict[str, str] = {
 }
 
 _BACK_LABELS: dict[str, tuple[str, str]] = {
-    "hug":    ("Hug back",    "hug"),
-    "pat":    ("Pat back",    "pat"),
-    "kiss":   ("Kiss back",   "kiss"),
-    "bonk":   ("Bonk back",   "bonk"),
-    "cuddle": ("Cuddle back", "cuddle"),
-    "poke":   ("Poke back",   "poke"),
+    "hug":      ("Hug back",       "hug"),
+    "pat":      ("Pat back",       "pat"),
+    "kiss":     ("Kiss back",      "kiss"),
+    "bonk":     ("Bonk back",      "bonk"),
+    "cuddle":   ("Cuddle back",    "cuddle"),
+    "poke":     ("Poke back",      "poke"),
+    "wave":     ("Wave back",      "wave"),
+    "bite":     ("Bite back",      "bite"),
+    "nuzzle":   ("Nuzzle back",    "nuzzle"),
+    "nom":      ("Nom back",       "nom"),
+    "tickle":   ("Tickle back",    "tickle"),
+    "dance":    ("Dance back",     "dance"),
+    "highfive": ("High five back", "highfive"),
+    "wink":     ("Wink back",      "wink"),
 }
 
-# Actions available in the context-menu select (blush is self-only)
+# Actions available in the context-menu select
 _SELECT_ACTIONS: list[tuple[str, str, str]] = [
-    ("hug",    "Hug",    "hug"),
-    ("pat",    "Pat",    "pat"),
-    ("kiss",   "Kiss",   "kiss"),
-    ("bonk",   "Bonk",   "bonk"),
-    ("cuddle", "Cuddle", "cuddle"),
-    ("poke",   "Poke",   "poke"),
+    ("hug",      "Hug",       "hug"),
+    ("pat",      "Pat",       "pat"),
+    ("kiss",     "Kiss",      "kiss"),
+    ("bonk",     "Bonk",      "bonk"),
+    ("cuddle",   "Cuddle",    "cuddle"),
+    ("poke",     "Poke",      "poke"),
+    ("wave",     "Wave",      "wave"),
+    ("bite",     "Bite",      "bite"),
+    ("nuzzle",   "Nuzzle",    "nuzzle"),
+    ("nom",      "Nom",       "nom"),
+    ("tickle",   "Tickle",    "tickle"),
+    ("dance",    "Dance",     "dance"),
+    ("highfive", "High Five", "highfive"),
+    ("wink",     "Wink",      "wink"),
+    ("pout",     "Pout",      "pout"),
+    ("laugh",    "Laugh",     "laugh"),
+    ("smug",     "Smug",      "smug"),
 ]
 
 RP_LINES: dict[str, list[str]] = {
@@ -135,26 +154,130 @@ RP_LINES: dict[str, list[str]] = {
         "{author} gives {target} a curious little poke~ 🌸",
         "Heyyy~ {author} pokes {target} repeatedly until they respond!",
     ],
+    "wave": [
+        "{author} waves cheerfully at {target}~ 👋",
+        "Hey! {author} gives {target} the friendliest wave~ 🌸",
+        "{author} catches {target}'s eye and waves with a big smile! 💕",
+        "*wave wave* — {author} waves at {target} with both hands~ ✨",
+    ],
+    "bite": [
+        "{author} playfully nibbles on {target}'s arm! 😤",
+        "Nom! {author} gives {target} a cheeky little bite~ 🌸",
+        "{author} gently chomps {target}~ it's oddly adorable!",
+        "*chomp!* — {author} bites {target} playfully! 💕",
+    ],
+    "nuzzle": [
+        "{author} nuzzles up against {target} softly~ 🥰",
+        "So warm! {author} nuzzles into {target}'s shoulder~ 💕",
+        "{author} curls up and nuzzles {target} gently~ 🌸",
+        "*nuzzle nuzzle* — {author} buries their face against {target}~ ✨",
+    ],
+    "nom": [
+        "{author} noms on {target}~ you're too cute not to! 😋",
+        "Nom nom nom! {author} can't stop eating {target}! 🌸",
+        "{author} takes a gentle nibble of {target}~ strangely adorable!",
+        "*om nom nom* — {author} declares {target} delicious~ ✨",
+    ],
+    "tickle": [
+        "{author} tickles {target} mercilessly~ stop laughing! 🤭",
+        "Ha ha ha! {author} finds all of {target}'s ticklish spots~ 🌸",
+        "{author} sneaks up and tickles {target}~ gotcha! 💕",
+        "{target} didn't see it coming — {author} launches a tickle attack~ ✨",
+    ],
+    "dance": [
+        "{author} grabs {target}'s hand and twirls them~ let's dance! 💃",
+        "*spins* — {author} dances with {target} under the stars~ ✨",
+        "{author} challenges {target} to a dance-off! 🌸",
+        "The music starts and {author} sweeps {target} into a waltz~ 💕",
+    ],
+    "cry": [
+        "{author} starts crying into {target}'s shoulder~ 😢",
+        "*sob sob* — {author} tears up and clings to {target}~ 🌸",
+        "{author} wells up with tears and hugs {target} for comfort~ 💕",
+        "The waterworks are on! {author} cries dramatically at {target}~ ✨",
+    ],
+    "highfive": [
+        "{author} goes for a high five with {target}~ nice! 🙌",
+        "SLAP! {author} lands a perfect high five on {target}~ 🌸",
+        "{author} holds up a hand for {target}~ don't leave them hanging! 💕",
+        "Team effort! {author} and {target} share a satisfying high five~ ✨",
+    ],
+    "wink": [
+        "{author} throws a cheeky wink at {target}~ 😉",
+        "Heyyy~ {author} winks playfully at {target}! 🌸",
+        "{author} catches {target}'s eye and gives a little wink~ 💕",
+        "*wink* — {author} grins at {target}~ so mysterious~ ✨",
+    ],
+    "pout": [
+        "{author} pouts and stares at {target} with big puppy eyes~ 😮",
+        "That's not fair! {author} pouts dramatically at {target}~ 🌸",
+        "{author} crosses their arms and gives {target} the full pout treatment~ 💕",
+        "{target} made {author} pout! Look what you did~ ✨",
+    ],
+    "laugh": [
+        "{author} bursts out laughing at {target}~ they can't help it! 😂",
+        "Ha ha ha! {author} doubles over because of {target}~ 🌸",
+        "{author} points at {target} and cackles~ too funny! 💕",
+        "{target} has {author} in absolute stitches~ ✨",
+    ],
+    "sleep": [
+        "{author} curls up next to {target} and immediately falls asleep~ 😴",
+        "zzzz... {author} dozes off on {target}'s shoulder~ 🌸",
+        "{author} falls fast asleep, using {target} as a pillow~ 💕",
+        "Five more minutes... {author} passes out against {target}~ ✨",
+    ],
+    "smug": [
+        "{author} gives {target} the smuggest look ever~ 😏",
+        "{author} crosses their arms and smirks at {target}~ I told you so!",
+        "Look at that face! {author} is absolutely smug at {target}~ 🌸",
+        "{target} can't handle how smug {author} is right now~ ✨",
+    ],
 }
 
 RP_COLORS: dict[str, int] = {
-    "hug":    config.PASTEL_PINK,
-    "pat":    config.PASTEL_PURPLE,
-    "kiss":   config.PASTEL_PINK,
-    "bonk":   config.PASTEL_PEACH,
-    "blush":  config.PASTEL_PINK,
-    "cuddle": config.PASTEL_PURPLE,
-    "poke":   config.PASTEL_BLUE,
+    "hug":      config.PASTEL_PINK,
+    "pat":      config.PASTEL_PURPLE,
+    "kiss":     config.PASTEL_PINK,
+    "bonk":     config.PASTEL_PEACH,
+    "blush":    config.PASTEL_PINK,
+    "cuddle":   config.PASTEL_PURPLE,
+    "poke":     config.PASTEL_BLUE,
+    "wave":     config.PASTEL_BLUE,
+    "bite":     config.PASTEL_PEACH,
+    "nuzzle":   config.PASTEL_PINK,
+    "nom":      config.PASTEL_YELLOW,
+    "tickle":   config.PASTEL_GREEN,
+    "dance":    config.PASTEL_PURPLE,
+    "cry":      config.PASTEL_BLUE,
+    "highfive": config.PASTEL_YELLOW,
+    "wink":     config.PASTEL_PINK,
+    "pout":     config.PASTEL_PEACH,
+    "laugh":    config.PASTEL_YELLOW,
+    "sleep":    config.PASTEL_LAVENDER,
+    "smug":     config.PASTEL_PURPLE,
 }
 
 RP_EMOJI_KEYS: dict[str, str] = {
-    "hug":    "hug",
-    "pat":    "pat",
-    "kiss":   "kiss",
-    "bonk":   "bonk",
-    "blush":  "blush",
-    "cuddle": "cuddle",
-    "poke":   "poke",
+    "hug":      "hug",
+    "pat":      "pat",
+    "kiss":     "kiss",
+    "bonk":     "bonk",
+    "blush":    "blush",
+    "cuddle":   "cuddle",
+    "poke":     "poke",
+    "wave":     "wave",
+    "bite":     "bite",
+    "nuzzle":   "nuzzle",
+    "nom":      "nom",
+    "tickle":   "tickle",
+    "dance":    "dance",
+    "cry":      "cry",
+    "highfive": "highfive",
+    "wink":     "wink",
+    "pout":     "pout",
+    "laugh":    "laugh",
+    "sleep":    "sleep",
+    "smug":     "smug",
 }
 
 _INSTALLS = app_commands.allowed_installs(guilds=True, users=True)
@@ -538,7 +661,7 @@ class RP(commands.Cog):
         except discord.HTTPException:
             pass
 
-    # ── hybrid commands ────────────────────────────────────────────────────────
+    # ── helpers ────────────────────────────────────────────────────────────────
 
     async def _send_rp(
         self,
@@ -546,10 +669,7 @@ class RP(commands.Cog):
         action: str,
         target: discord.User | None = None,
     ) -> None:
-        # Defer immediately so Discord doesn't drop the interaction while we
-        # fetch the GIF (which can take up to 5 s and would cause a 10062 error).
         await ctx.defer()
-
         loader = self._loader()
         gif_url = await _fetch_gif(action)
         await database.log_rp(
@@ -561,53 +681,132 @@ class RP(commands.Cog):
         lv = _build_rp_view(action, ctx.author, target, gif_url, loader)
         await ctx.send(view=lv)
 
-    @commands.hybrid_command(name="hug", description="Give someone a warm hug! 🫂")
-    @app_commands.describe(target="Who to hug")
+    # ── /rp group ──────────────────────────────────────────────────────────────
+
+    @commands.hybrid_group(
+        name="rp",
+        description="Cute anime roleplay actions~ 🎀",
+        invoke_without_command=True,
+    )
     @_INSTALLS
     @_CONTEXTS
-    async def hug(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+    async def rp(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            loader = self._loader()
+            flower = loader.get("flower")
+            ribbon = loader.get("ribbon")
+            container = discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {flower} Roleplay Commands\n\n"
+                    f"{ribbon} Use `/rp <action> [@user]` to send a cute anime GIF!\n\n"
+                    "**Actions:** `hug` `pat` `kiss` `bonk` `blush` `cuddle` `poke` "
+                    "`wave` `bite` `nuzzle` `nom` `tickle` `dance` `cry` `highfive` "
+                    "`wink` `pout` `laugh` `sleep` `smug`"
+                ),
+                accent_color=discord.Color(config.PASTEL_PINK),
+            )
+            lv = discord.ui.LayoutView()
+            lv.add_item(container)
+            await ctx.send(view=lv, ephemeral=True)
+
+    @rp.command(name="hug", description="Give someone a warm hug! 🫂")
+    @app_commands.describe(target="Who to hug")
+    async def rp_hug(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "hug", target)
 
-    @commands.hybrid_command(name="pat", description="Pat someone on the head~ 🌸")
+    @rp.command(name="pat", description="Pat someone on the head~ 🌸")
     @app_commands.describe(target="Who to pat")
-    @_INSTALLS
-    @_CONTEXTS
-    async def pat(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+    async def rp_pat(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "pat", target)
 
-    @commands.hybrid_command(name="kiss", description="Give someone a sweet kiss 💋")
+    @rp.command(name="kiss", description="Give someone a sweet kiss 💋")
     @app_commands.describe(target="Who to kiss")
-    @_INSTALLS
-    @_CONTEXTS
-    async def kiss(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+    async def rp_kiss(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "kiss", target)
 
-    @commands.hybrid_command(name="bonk", description="Bonk someone on the head! 🔨")
+    @rp.command(name="bonk", description="Bonk someone on the head! 🔨")
     @app_commands.describe(target="Who to bonk")
-    @_INSTALLS
-    @_CONTEXTS
-    async def bonk(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+    async def rp_bonk(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "bonk", target)
 
-    @commands.hybrid_command(name="blush", description="Express your blush 😳")
-    @_INSTALLS
-    @_CONTEXTS
-    async def blush(self, ctx: commands.Context) -> None:
+    @rp.command(name="blush", description="Express your blush 😳")
+    async def rp_blush(self, ctx: commands.Context) -> None:
         await self._send_rp(ctx, "blush")
 
-    @commands.hybrid_command(name="cuddle", description="Cuddle with someone 🥰")
+    @rp.command(name="cuddle", description="Cuddle with someone 🥰")
     @app_commands.describe(target="Who to cuddle with")
-    @_INSTALLS
-    @_CONTEXTS
-    async def cuddle(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+    async def rp_cuddle(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "cuddle", target)
 
-    @commands.hybrid_command(name="poke", description="Poke someone playfully 👉")
+    @rp.command(name="poke", description="Poke someone playfully 👉")
     @app_commands.describe(target="Who to poke")
-    @_INSTALLS
-    @_CONTEXTS
-    async def poke(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+    async def rp_poke(self, ctx: commands.Context, target: discord.User | None = None) -> None:
         await self._send_rp(ctx, "poke", target)
+
+    @rp.command(name="wave", description="Wave at someone~ 👋")
+    @app_commands.describe(target="Who to wave at")
+    async def rp_wave(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "wave", target)
+
+    @rp.command(name="bite", description="Give someone a playful bite! 😤")
+    @app_commands.describe(target="Who to bite")
+    async def rp_bite(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "bite", target)
+
+    @rp.command(name="nuzzle", description="Nuzzle up to someone~ 🥰")
+    @app_commands.describe(target="Who to nuzzle")
+    async def rp_nuzzle(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "nuzzle", target)
+
+    @rp.command(name="nom", description="Nom on someone~ 😋")
+    @app_commands.describe(target="Who to nom on")
+    async def rp_nom(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "nom", target)
+
+    @rp.command(name="tickle", description="Tickle someone mercilessly! 🤭")
+    @app_commands.describe(target="Who to tickle")
+    async def rp_tickle(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "tickle", target)
+
+    @rp.command(name="dance", description="Dance with someone~ 💃")
+    @app_commands.describe(target="Who to dance with")
+    async def rp_dance(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "dance", target)
+
+    @rp.command(name="cry", description="Have a good cry~ 😢")
+    @app_commands.describe(target="Cry on someone's shoulder (optional)")
+    async def rp_cry(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "cry", target)
+
+    @rp.command(name="highfive", description="High five someone! 🙌")
+    @app_commands.describe(target="Who to high five")
+    async def rp_highfive(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "highfive", target)
+
+    @rp.command(name="wink", description="Throw a cheeky wink~ 😉")
+    @app_commands.describe(target="Who to wink at")
+    async def rp_wink(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "wink", target)
+
+    @rp.command(name="pout", description="Show off your best pout~ 😮")
+    @app_commands.describe(target="Who to pout at")
+    async def rp_pout(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "pout", target)
+
+    @rp.command(name="laugh", description="Burst out laughing! 😂")
+    @app_commands.describe(target="Who or what you're laughing at")
+    async def rp_laugh(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "laugh", target)
+
+    @rp.command(name="sleep", description="Fall fast asleep~ 😴")
+    @app_commands.describe(target="Fall asleep on someone (optional)")
+    async def rp_sleep(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "sleep", target)
+
+    @rp.command(name="smug", description="Give someone your smuggest look~ 😏")
+    @app_commands.describe(target="Who to be smug at")
+    async def rp_smug(self, ctx: commands.Context, target: discord.User | None = None) -> None:
+        await self._send_rp(ctx, "smug", target)
 
 
 async def setup(bot: commands.Bot) -> None:

@@ -375,10 +375,19 @@ class Welcome(commands.Cog):
         except Exception as exc:
             log.error("on_member_join error in %s: %s", guild.name, exc)
 
-    # ── setwelcome ────────────────────────────────────────────────────────────
+    # ── /welcome group ────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(
-        name="setwelcome",
+    @commands.hybrid_group(name="welcome", description="Configure the member welcome system~ 🌸", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
+    async def welcome_group(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    # ── /welcome setup ────────────────────────────────────────────────────────
+
+    @welcome_group.command(
+        name="setup",
         description="Open the welcome message setup wizard",
     )
     @commands.guild_only()
@@ -396,10 +405,10 @@ class Welcome(commands.Cog):
                 view=view,
             )
 
-    # ── setwelcomechannel ─────────────────────────────────────────────────────
+    # ── /welcome channel ──────────────────────────────────────────────────────
 
-    @commands.hybrid_command(
-        name="setwelcomechannel",
+    @welcome_group.command(
+        name="channel",
         description="Set the channel where welcome messages are sent",
     )
     @app_commands.describe(channel="The channel to send welcome messages in")
@@ -424,17 +433,17 @@ class Welcome(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    # ── setwelcomeimage (slash-only — discord.Attachment upload) ─────────────
+    # ── /welcome image (slash-only — discord.Attachment upload) ──────────────
 
-    @app_commands.command(
-        name="setwelcomeimage",
+    @welcome_group.command(
+        name="image",
         description="Upload a banner image file for welcome messages",
     )
     @app_commands.describe(image="The image file to use as the welcome banner")
-    @app_commands.guild_only()
-    @app_commands.checks.has_permissions(manage_guild=True)
+    @commands.guild_only()
+    @commands.has_permissions(manage_guild=True)
     async def setwelcomeimage(
-        self, interaction: discord.Interaction, image: discord.Attachment
+        self, ctx: commands.Context, image: discord.Attachment
     ) -> None:
         assert interaction.guild
         loader = self._loader()
@@ -483,10 +492,10 @@ class Welcome(commands.Cog):
             interaction.user,
         )
 
-    # ── welcometest ───────────────────────────────────────────────────────────
+    # ── /welcome test ─────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(
-        name="welcometest",
+    @welcome_group.command(
+        name="test",
         description="Preview the welcome card as if you just joined",
     )
     @commands.guild_only()
@@ -523,10 +532,10 @@ class Welcome(commands.Cog):
         )
         await ctx.send(view=_cv2(wrapper))
 
-    # ── togglewelcome ─────────────────────────────────────────────────────────
+    # ── /welcome toggle ───────────────────────────────────────────────────────
 
-    @commands.hybrid_command(
-        name="togglewelcome",
+    @welcome_group.command(
+        name="toggle",
         description="Enable or disable the member welcome system",
     )
     @commands.guild_only()

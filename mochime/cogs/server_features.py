@@ -41,9 +41,18 @@ class ServerFeatures(commands.Cog):
         assert isinstance(cog, EmojiLoader)
         return cog
 
-    @commands.hybrid_command(name="server", description="Show MochiMe server panel")
+    # ── /server group ─────────────────────────────────────────────────────────
+
+    @commands.hybrid_group(name="server", description="Server management and settings~ ⚙️", invoke_without_command=True)
+    @commands.guild_only()
+    async def server_group(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    @server_group.command(name="panel", description="Show MochiMe server panel")
     @commands.guild_only()
     async def server_panel(self, ctx: commands.Context) -> None:
+        await ctx.defer()
         loader = self._loader()
         guild = ctx.guild
         assert guild is not None
@@ -66,7 +75,7 @@ class ServerFeatures(commands.Cog):
                 f"{flower} **RP Channel:** {rp_channel}\n"
                 f"{shield} **Log Channel:** {log_channel}\n"
                 f"{ribbon} **Mod Role:** {mod_role}\n\n"
-                "*Use `/settings` to configure these options.*"
+                "*Use `/server settings` to configure these options.*"
             ),
             discord.ui.Separator(),
             discord.ui.TextDisplay(
@@ -81,7 +90,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    @commands.hybrid_command(name="settings", description="Configure MochiMe for this server")
+    @server_group.command(name="settings", description="Configure MochiMe for this server")
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def settings(self, ctx: commands.Context) -> None:
@@ -95,17 +104,17 @@ class ServerFeatures(commands.Cog):
         container = discord.ui.Container(
             discord.ui.TextDisplay(
                 f"## {sparkle} Server Settings\n\n"
-                f"{ribbon} Use the options below to configure MochiMe.\n\n"
+                f"{ribbon} Use the commands below to configure MochiMe.\n\n"
                 "**Available settings:**\n"
-                "• `setrp #channel` — Set the RP channel\n"
-                "• `setlog #channel` — Set the moderation log channel\n"
-                "• `setmodrole @role` — Set the moderator role"
+                "• `/server setrp #channel` — Set the RP channel\n"
+                "• `/server setlog #channel` — Set the moderation log channel\n"
+                "• `/server setmodrole @role` — Set the moderator role"
             ),
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
         await ctx.send(view=_cv2(container))
 
-    @commands.hybrid_command(name="setrp", description="Set the RP channel")
+    @server_group.command(name="setrp", description="Set the RP channel")
     @app_commands.describe(channel="The channel to designate as RP room")
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
@@ -125,7 +134,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    @commands.hybrid_command(name="setlog", description="Set the moderation log channel")
+    @server_group.command(name="setlog", description="Set the moderation log channel")
     @app_commands.describe(channel="The channel for moderation logs")
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
@@ -145,7 +154,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    @commands.hybrid_command(name="setmodrole", description="Set the moderator role")
+    @server_group.command(name="setmodrole", description="Set the moderator role")
     @app_commands.describe(role="The role to designate as moderators")
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
@@ -163,7 +172,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    @commands.hybrid_command(name="cosmetics", description="Browse server cosmetics")
+    @server_group.command(name="cosmetics", description="Browse server cosmetics")
     @commands.guild_only()
     async def cosmetics(self, ctx: commands.Context) -> None:
         loader = self._loader()
@@ -183,7 +192,7 @@ class ServerFeatures(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    @commands.hybrid_command(name="pets", description="Browse server-bound pets")
+    @server_group.command(name="pets", description="Browse server-bound pets")
     @commands.guild_only()
     async def pets(self, ctx: commands.Context) -> None:
         loader = self._loader()

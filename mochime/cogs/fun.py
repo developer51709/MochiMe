@@ -65,9 +65,16 @@ class Fun(commands.Cog):
         assert isinstance(cog, EmojiLoader)
         return cog
 
-    # ── /8ball ────────────────────────────────────────────────────────────────
+    # ── /fun group ────────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="8ball", description="Ask the magic 8-ball a question 🔮")
+    @commands.hybrid_group(name="fun", description="Fun games and randomness~ 🎲", invoke_without_command=True)
+    async def fun_group(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    # ── /fun 8ball ────────────────────────────────────────────────────────────
+
+    @fun_group.command(name="8ball", description="Ask the magic 8-ball a question 🔮")
     @app_commands.describe(question="Your question for the 8-ball")
     async def eight_ball(self, ctx: commands.Context, *, question: str) -> None:
         loader = self._loader()
@@ -98,9 +105,9 @@ class Fun(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    # ── /coinflip ─────────────────────────────────────────────────────────────
+    # ── /fun coinflip ─────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="coinflip", description="Flip a coin~ 🪙")
+    @fun_group.command(name="coinflip", description="Flip a coin~ 🪙")
     async def coinflip(self, ctx: commands.Context) -> None:
         loader = self._loader()
         coin = loader.get("coin")
@@ -117,11 +124,9 @@ class Fun(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    # ── /choose ───────────────────────────────────────────────────────────────
+    # ── /fun choose ───────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(
-        name="choose", description="Can't decide? Let MochiMe pick for you! 🌸"
-    )
+    @fun_group.command(name="choose", description="Can't decide? Let MochiMe pick for you! 🌸")
     @app_commands.describe(choices="Comma-separated options (e.g. pizza, sushi, ramen)")
     async def choose(self, ctx: commands.Context, *, choices: str) -> None:
         loader = self._loader()
@@ -157,9 +162,9 @@ class Fun(commands.Cog):
         )
         await ctx.send(view=_cv2(container))
 
-    # ── /roll ─────────────────────────────────────────────────────────────────
+    # ── /fun roll ─────────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="roll", description="Roll some dice! 🎲")
+    @fun_group.command(name="roll", description="Roll some dice! 🎲")
     @app_commands.describe(dice="Dice to roll — e.g. d6, 2d20, d100 (default: d6)")
     async def roll(self, ctx: commands.Context, dice: str = "d6") -> None:
         loader = self._loader()

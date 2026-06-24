@@ -124,6 +124,7 @@ class Levels(commands.Cog):
     async def rank(
         self, ctx: commands.Context, member: discord.Member | None = None
     ) -> None:
+        await ctx.defer()
         target = member or ctx.author
         assert ctx.guild is not None
 
@@ -182,6 +183,7 @@ class Levels(commands.Cog):
     )
     @commands.guild_only()
     async def leaderboard(self, ctx: commands.Context) -> None:
+        await ctx.defer()
         assert ctx.guild is not None
 
         loader = self._loader()

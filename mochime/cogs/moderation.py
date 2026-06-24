@@ -208,9 +208,17 @@ class Moderation(commands.Cog):
         # mod_confirm
         await pending["callback"](interaction)
 
-    # ── moderation commands ───────────────────────────────────────────────────
+    # ── /mod group ────────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="ban", description="Ban a member from the server")
+    @commands.hybrid_group(name="mod", description="Server moderation tools~ 🛡️", invoke_without_command=True)
+    @commands.guild_only()
+    async def mod_group(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    # ── /mod ban ──────────────────────────────────────────────────────────────
+
+    @mod_group.command(name="ban", description="Ban a member from the server")
     @app_commands.describe(target="Member to ban", reason="Reason for the ban")
     @commands.guild_only()
     @commands.has_permissions(ban_members=True)
@@ -244,7 +252,7 @@ class Moderation(commands.Cog):
 
         await self._send_confirm(ctx, loader, "Ban", target, reason, do_ban)
 
-    @commands.hybrid_command(name="kick", description="Kick a member from the server")
+    @mod_group.command(name="kick", description="Kick a member from the server")
     @app_commands.describe(target="Member to kick", reason="Reason for the kick")
     @commands.guild_only()
     @commands.has_permissions(kick_members=True)
@@ -278,7 +286,7 @@ class Moderation(commands.Cog):
 
         await self._send_confirm(ctx, loader, "Kick", target, reason, do_kick)
 
-    @commands.hybrid_command(name="mute", description="Timeout a member (up to 28 days)")
+    @mod_group.command(name="mute", description="Timeout a member (up to 28 days)")
     @app_commands.describe(
         target="Member to mute",
         duration="Duration in minutes (default 10)",
@@ -330,7 +338,7 @@ class Moderation(commands.Cog):
 
         await self._send_confirm(ctx, loader, f"Mute ({duration}m)", target, reason, do_mute)
 
-    @commands.hybrid_command(name="warn", description="Warn a member")
+    @mod_group.command(name="warn", description="Warn a member")
     @app_commands.describe(target="Member to warn", reason="Reason for the warning")
     @commands.guild_only()
     @commands.has_permissions(manage_messages=True)
@@ -376,11 +384,7 @@ class Moderation(commands.Cog):
 
         await self._send_confirm(ctx, loader, "Warn", target, reason, do_warn)
 
-    @ban.error
-    @kick.error
-    @mute.error
-    @warn.error
-    async def mod_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
+    async def cog_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
         loader = self._loader()
         cross = loader.get("cross")
 

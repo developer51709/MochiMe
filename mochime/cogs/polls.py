@@ -109,9 +109,17 @@ class Polls(commands.Cog):
         assert isinstance(cog, EmojiLoader)
         return cog
 
-    # ── /poll ──────────────────────────────────────────────────────────────────
+    # ── /poll group ────────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="poll", description="Create a community poll 📊")
+    @commands.hybrid_group(name="poll", description="Create and manage community polls 📊", invoke_without_command=True)
+    @commands.guild_only()
+    async def poll_group(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    # ── /poll create ───────────────────────────────────────────────────────────
+
+    @poll_group.command(name="create", description="Create a community poll 📊")
     @app_commands.describe(
         question="The question to ask",
         option1="First option",
@@ -174,9 +182,9 @@ class Polls(commands.Cog):
             options=options,
         )
 
-    # ── /endpoll ───────────────────────────────────────────────────────────────
+    # ── /poll end ──────────────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="endpoll", description="Close a poll you created 📊")
+    @poll_group.command(name="end", description="Close a poll you created 📊")
     @app_commands.describe(message_id="ID of the poll message to close")
     @commands.guild_only()
     async def endpoll(self, ctx: commands.Context, message_id: str) -> None:

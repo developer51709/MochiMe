@@ -489,9 +489,17 @@ class Giveaways(commands.Cog):
             return False
         return m.guild_permissions.manage_guild or m.guild_permissions.administrator
 
-    # ── /giveaway command ─────────────────────────────────────────────────────
+    # ── /giveaway group ───────────────────────────────────────────────────────
 
-    @commands.hybrid_command(name="giveaway", description="Start a giveaway~ 🎉")
+    @commands.hybrid_group(name="giveaway", description="Host server giveaways~ 🎉", invoke_without_command=True)
+    @commands.guild_only()
+    async def giveaway_group(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand is None:
+            await ctx.send_help(ctx.command)
+
+    # ── /giveaway start ───────────────────────────────────────────────────────
+
+    @giveaway_group.command(name="start", description="Start a giveaway~ 🎉")
     @app_commands.describe(
         prize="What are you giving away?",
         duration="Duration — e.g. 1d, 2h 30m, 1d 12h",

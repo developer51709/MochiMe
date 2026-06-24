@@ -209,6 +209,7 @@ class Application(commands.Cog):
     async def user_profile(
         self, ctx: commands.Context, member: discord.Member | None = None
     ) -> None:
+        await ctx.defer()
         target: discord.Member | discord.User = member or ctx.author
         loader = self._loader()
         sparkle = loader.get("sparkle")
