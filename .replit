@@ -18,10 +18,10 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "MochiMe Bot"
+args = "Start application"
 
 [[workflows.workflow]]
-name = "MochiMe Bot"
+name = "Start application"
 author = "agent"
 
 [[workflows.workflow.tasks]]
