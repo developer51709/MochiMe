@@ -51,13 +51,26 @@ def _extract_gif_url(message: discord.Message) -> str | None:
         return None
 
 _NEKOS_ACTION_MAP: dict[str, str] = {
-    "hug":    "hug",
-    "pat":    "pat",
-    "kiss":   "kiss",
-    "bonk":   "slap",
-    "blush":  "blush",
-    "cuddle": "cuddle",
-    "poke":   "poke",
+    "hug":      "hug",
+    "pat":      "pat",
+    "kiss":     "kiss",
+    "bonk":     "slap",
+    "blush":    "blush",
+    "cuddle":   "cuddle",
+    "poke":     "poke",
+    "wave":     "wave",
+    "bite":     "bite",
+    "nuzzle":   "nuzzle",
+    "nom":      "nom",
+    "tickle":   "tickle",
+    "dance":    "dance",
+    "cry":      "cry",
+    "highfive": "highfive",
+    "wink":     "wink",
+    "pout":     "pout",
+    "laugh":    "laugh",
+    "sleep":    "sleep",
+    "smug":     "smug",
 }
 
 _BACK_LABELS: dict[str, tuple[str, str]] = {
