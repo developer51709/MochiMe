@@ -23,6 +23,7 @@ COGS = [
     "cogs.application",
     "cogs.server_features",
     "cogs.welcome",
+    "cogs.giveaways",
 ]
 
 log = console.get_logger("mochime")

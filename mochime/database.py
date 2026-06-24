@@ -92,6 +92,34 @@ async def init_db() -> None:
             guild_id  TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
+
+        CREATE TABLE IF NOT EXISTS giveaways (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id        TEXT    NOT NULL UNIQUE,
+            channel_id        TEXT    NOT NULL,
+            guild_id          TEXT    NOT NULL,
+            host_id           TEXT    NOT NULL,
+            prize             TEXT    NOT NULL,
+            description       TEXT,
+            winner_count      INTEGER NOT NULL DEFAULT 1,
+            ends_at           TEXT    NOT NULL,
+            ended             INTEGER NOT NULL DEFAULT 0,
+            cancelled         INTEGER NOT NULL DEFAULT 0,
+            required_role_ids TEXT    NOT NULL DEFAULT '[]',
+            bonus_role_ids    TEXT    NOT NULL DEFAULT '[]',
+            min_account_age   INTEGER NOT NULL DEFAULT 0,
+            min_server_age    INTEGER NOT NULL DEFAULT 0,
+            winners           TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS giveaway_entries (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            message_id TEXT    NOT NULL,
+            user_id    TEXT    NOT NULL,
+            entries    INTEGER NOT NULL DEFAULT 1,
+            entered_at TEXT    NOT NULL DEFAULT (datetime('now')),
+            UNIQUE (message_id, user_id)
+        );
     """)
     await db.commit()
 
@@ -331,3 +359,114 @@ async def get_vote_counts(message_id: str, num_options: int) -> list[int]:
             if 0 <= idx < num_options:
                 counts[idx] = row["cnt"]
     return counts
+
+
+# ── giveaways ─────────────────────────────────────────────────────────────────
+
+
+async def create_giveaway(
+    *,
+    message_id: str,
+    channel_id: str,
+    guild_id: str,
+    host_id: str,
+    prize: str,
+    description: str | None,
+    winner_count: int,
+    ends_at: str,
+    required_role_ids: str,
+    bonus_role_ids: str,
+    min_account_age: int,
+    min_server_age: int,
+) -> None:
+    db = await get_db()
+    await db.execute(
+        """
+        INSERT INTO giveaways
+            (message_id, channel_id, guild_id, host_id, prize, description,
+             winner_count, ends_at, required_role_ids, bonus_role_ids,
+             min_account_age, min_server_age)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            message_id, channel_id, guild_id, host_id, prize, description,
+            winner_count, ends_at, required_role_ids, bonus_role_ids,
+            min_account_age, min_server_age,
+        ),
+    )
+    await db.commit()
+
+
+async def get_giveaway(message_id: str) -> aiosqlite.Row | None:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM giveaways WHERE message_id = ?", (message_id,)
+    ) as cur:
+        return await cur.fetchone()
+
+
+async def get_active_giveaways() -> list[aiosqlite.Row]:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM giveaways WHERE ended = 0 AND cancelled = 0"
+    ) as cur:
+        return await cur.fetchall()
+
+
+async def end_giveaway(message_id: str, winners_json: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "UPDATE giveaways SET ended = 1, winners = ? WHERE message_id = ?",
+        (winners_json, message_id),
+    )
+    await db.commit()
+
+
+async def cancel_giveaway(message_id: str) -> None:
+    db = await get_db()
+    await db.execute(
+        "UPDATE giveaways SET ended = 1, cancelled = 1 WHERE message_id = ?",
+        (message_id,),
+    )
+    await db.commit()
+
+
+async def add_giveaway_entry(message_id: str, user_id: str, entries: int) -> None:
+    db = await get_db()
+    await db.execute(
+        """
+        INSERT INTO giveaway_entries (message_id, user_id, entries)
+        VALUES (?, ?, ?)
+        ON CONFLICT(message_id, user_id) DO UPDATE SET entries = excluded.entries
+        """,
+        (message_id, user_id, entries),
+    )
+    await db.commit()
+
+
+async def get_giveaway_entry(message_id: str, user_id: str) -> aiosqlite.Row | None:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM giveaway_entries WHERE message_id = ? AND user_id = ?",
+        (message_id, user_id),
+    ) as cur:
+        return await cur.fetchone()
+
+
+async def get_giveaway_entries(message_id: str) -> list[aiosqlite.Row]:
+    db = await get_db()
+    async with db.execute(
+        "SELECT * FROM giveaway_entries WHERE message_id = ? ORDER BY entered_at ASC",
+        (message_id,),
+    ) as cur:
+        return await cur.fetchall()
+
+
+async def count_giveaway_entries(message_id: str) -> int:
+    db = await get_db()
+    async with db.execute(
+        "SELECT COUNT(*) AS cnt FROM giveaway_entries WHERE message_id = ?",
+        (message_id,),
+    ) as cur:
+        row = await cur.fetchone()
+        return row["cnt"] if row else 0

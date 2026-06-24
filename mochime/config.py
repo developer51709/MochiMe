@@ -60,6 +60,13 @@ FALLBACK_EMOJIS: dict[str, str] = {
     "level_up": "🌟",
     "rank": "🌸",
     "confetti": "🎉",
+    "wand":     "🪄",
+    "eye":      "👁️",
+    "add":      "➕",
+    "remove":   "➖",
+    "trash":    "🗑️",
+    "bell":     "🔔",
+    "book":     "📖",
 }
 
 BOOT_BANNER = """
