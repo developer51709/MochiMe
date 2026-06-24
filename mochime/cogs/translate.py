@@ -16,6 +16,7 @@ from discord.ext import commands
 
 import config
 import console
+from cogs.emoji_loader import EmojiLoader
 
 log = console.get_logger("cogs.translate")
 
@@ -162,9 +163,10 @@ def _result_view(
     return lv
 
 
-def _error_view(message: str) -> discord.ui.LayoutView:
+def _error_view(message: str, loader: "EmojiLoader | None" = None) -> discord.ui.LayoutView:
+    cross = loader.get("cross") if loader else "❌"
     container = discord.ui.Container(
-        discord.ui.TextDisplay(f"## ❌ Translation Failed\n{message}"),
+        discord.ui.TextDisplay(f"## {cross} Translation Failed\n{message}"),
         accent_color=discord.Color(config.PASTEL_PEACH),
     )
     lv = discord.ui.LayoutView()
@@ -183,6 +185,9 @@ class Translate(commands.Cog):
         self._pending: dict[tuple[int, int], str] = {}
         self._ctx_menus: list[app_commands.ContextMenu] = []
         self._register_context_menus()
+
+    def _loader(self) -> "EmojiLoader | None":
+        return self.bot.get_cog("EmojiLoader")  # type: ignore[return-value]
 
     def _register_context_menus(self) -> None:
         _installs = app_commands.AppInstallationType(guild=True, user=True)
@@ -251,6 +256,8 @@ class Translate(commands.Cog):
         key = (interaction.user.id, message_id)
         original = self._pending.pop(key, None)
 
+        loader = self._loader()
+
         if original is None:
             try:
                 channel_id = int(channel_id_str)
@@ -263,7 +270,7 @@ class Translate(commands.Cog):
 
         if not original:
             await interaction.response.edit_message(
-                view=_error_view("Couldn't retrieve the original message text.")
+                view=_error_view("Couldn't retrieve the original message text.", loader)
             )
             return
 
@@ -276,14 +283,15 @@ class Translate(commands.Cog):
             log.error("Translation failed: %s", exc)
             await interaction.edit_original_response(
                 view=_error_view(
-                    "The translation service is currently unavailable. Please try again later."
+                    "The translation service is currently unavailable. Please try again later.",
+                    loader,
                 )
             )
             return
 
         if not translated:
             await interaction.edit_original_response(
-                view=_error_view("Received an empty translation.")
+                view=_error_view("Received an empty translation.", loader)
             )
             return
 

@@ -10,7 +10,8 @@ import config
 import database
 from cogs.emoji_loader import EmojiLoader
 
-_OPTION_EMOJIS = ["🅰️", "🅱️", "🅾️", "🆎"]
+_OPTION_EMOJI_KEYS = ["bolt", "star", "ribbon", "moon"]
+
 _OPTION_COLORS = [
     config.PASTEL_PINK,
     config.PASTEL_PURPLE,
@@ -39,19 +40,28 @@ def _build_poll_view(
     counts: list[int],
     *,
     active: bool = True,
+    loader: EmojiLoader | None = None,
 ) -> discord.ui.LayoutView:
     """Build the full CV2 poll layout with vote counts and buttons inside the container."""
-    loader_emoji = _OPTION_EMOJIS
     total = sum(counts)
-    sparkle = "✨"
-    chart = "📊"
+
+    def _e(key: str, fallback: str) -> str:
+        return loader.get(key) if loader else fallback
+
+    sparkle = _e("sparkle", "✨")
+    chart = _e("chart", "📊")
+
+    option_emojis = [
+        _e(_OPTION_EMOJI_KEYS[i], f"`{i + 1}.`") if i < len(_OPTION_EMOJI_KEYS) else f"`{i + 1}.`"
+        for i in range(len(options))
+    ]
 
     # Build the results text
     result_lines: list[str] = []
     for i, (opt, count) in enumerate(zip(options, counts)):
         bar = _progress_bar(count, total)
         pct = (count / total * 100) if total > 0 else 0.0
-        emoji = loader_emoji[i] if i < len(loader_emoji) else f"`{i + 1}.`"
+        emoji = option_emojis[i]
         result_lines.append(
             f"{emoji} **{opt}**\n{bar} `{count}` vote{'s' if count != 1 else ''} ({pct:.0f}%)"
         )
@@ -63,7 +73,7 @@ def _build_poll_view(
     buttons = [
         discord.ui.Button(
             label=opt[:80],
-            emoji=loader_emoji[i] if i < len(loader_emoji) else None,
+            emoji=option_emojis[i],
             style=discord.ButtonStyle.primary,
             custom_id=f"poll_vote:{message_id}:{i}",
             disabled=not active,
@@ -119,6 +129,9 @@ class Polls(commands.Cog):
         option3: str | None = None,
         option4: str | None = None,
     ) -> None:
+        # Defer immediately so the interaction doesn't expire while we work
+        await ctx.defer()
+
         options: list[str] = [option1, option2]
         if option3:
             options.append(option3)
@@ -126,29 +139,26 @@ class Polls(commands.Cog):
             options.append(option4)
 
         counts = [0] * len(options)
+        loader = self._loader()
 
-        # We need the message_id before we can store the poll, so send first then store.
-        # Use a placeholder message_id of "0" and update after send.
         assert ctx.guild is not None
         assert ctx.channel is not None
 
         # Build initial view with a placeholder ID — we'll update the message_id after send
-        placeholder_id = "pending"
-        lv = _build_poll_view(placeholder_id, question, options, counts)
+        lv = _build_poll_view("pending", question, options, counts, loader=loader)
 
-        # For slash commands we need to send() first to get the message object
+        # After deferring, ctx.send() returns the Message for both prefix and slash
         msg = await ctx.send(view=lv)
 
         if msg is None:
-            # Slash command: fetch the original response message
             try:
                 msg = await ctx.interaction.original_response()  # type: ignore[union-attr]
             except Exception:
                 return
 
-        # Now rebuild with the real message_id and re-edit the message
+        # Rebuild with the real message_id and edit
         real_id = str(msg.id)
-        lv_real = _build_poll_view(real_id, question, options, counts)
+        lv_real = _build_poll_view(real_id, question, options, counts, loader=loader)
         try:
             await msg.edit(view=lv_real)
         except Exception:
@@ -170,6 +180,7 @@ class Polls(commands.Cog):
     @app_commands.describe(message_id="ID of the poll message to close")
     @commands.guild_only()
     async def endpoll(self, ctx: commands.Context, message_id: str) -> None:
+        await ctx.defer(ephemeral=True)
         loader = self._loader()
         cross = loader.get("cross")
         check = loader.get("check")
@@ -302,7 +313,7 @@ class Polls(commands.Cog):
 
         # Update the poll message with new counts
         counts = await database.get_vote_counts(message_id, len(options))
-        updated_lv = _build_poll_view(message_id, row["question"], options, counts)
+        updated_lv = _build_poll_view(message_id, row["question"], options, counts, loader=loader)
 
         try:
             if interaction.message:

@@ -61,22 +61,22 @@ _NEKOS_ACTION_MAP: dict[str, str] = {
 }
 
 _BACK_LABELS: dict[str, tuple[str, str]] = {
-    "hug":    ("Hug back",    "🫂"),
-    "pat":    ("Pat back",    "🌸"),
-    "kiss":   ("Kiss back",   "💋"),
-    "bonk":   ("Bonk back",   "🔨"),
-    "cuddle": ("Cuddle back", "🥰"),
-    "poke":   ("Poke back",   "👉"),
+    "hug":    ("Hug back",    "hug"),
+    "pat":    ("Pat back",    "pat"),
+    "kiss":   ("Kiss back",   "kiss"),
+    "bonk":   ("Bonk back",   "bonk"),
+    "cuddle": ("Cuddle back", "cuddle"),
+    "poke":   ("Poke back",   "poke"),
 }
 
 # Actions available in the context-menu select (blush is self-only)
 _SELECT_ACTIONS: list[tuple[str, str, str]] = [
-    ("hug",    "Hug",    "🫂"),
-    ("pat",    "Pat",    "🌸"),
-    ("kiss",   "Kiss",   "💋"),
-    ("bonk",   "Bonk",   "🔨"),
-    ("cuddle", "Cuddle", "🥰"),
-    ("poke",   "Poke",   "👉"),
+    ("hug",    "Hug",    "hug"),
+    ("pat",    "Pat",    "pat"),
+    ("kiss",   "Kiss",   "kiss"),
+    ("bonk",   "Bonk",   "bonk"),
+    ("cuddle", "Cuddle", "cuddle"),
+    ("poke",   "Poke",   "poke"),
 ]
 
 RP_LINES: dict[str, list[str]] = {
@@ -227,10 +227,10 @@ def _build_rp_view(
     back_button: discord.ui.Button | None = None
 
     if include_back and target is not None and target.id != author.id and action in _BACK_LABELS:
-        label, emoji = _BACK_LABELS[action]
+        label, emoji_key = _BACK_LABELS[action]
         back_button = discord.ui.Button(
             label=label,
-            emoji=emoji,
+            emoji=emoji_loader.get(emoji_key),
             style=discord.ButtonStyle.primary,
             custom_id=f"rp_back:{action}:{author.id}:{target.id}",
         )
@@ -253,8 +253,8 @@ def _build_action_picker(
         placeholder="🌸 Pick an action…",
         custom_id=f"rp_action_select:{target.id}",
         options=[
-            discord.SelectOption(label=label, value=action, emoji=emoji)
-            for action, label, emoji in _SELECT_ACTIONS
+            discord.SelectOption(label=label, value=action, emoji=emoji_loader.get(emoji_key))
+            for action, label, emoji_key in _SELECT_ACTIONS
         ],
     )
 
@@ -422,7 +422,7 @@ class RP(commands.Cog):
 
             disabled_btn = discord.ui.Button(
                 label=_BACK_LABELS[action][0],
-                emoji=_BACK_LABELS[action][1],
+                emoji=loader.get(_BACK_LABELS[action][1]),
                 style=discord.ButtonStyle.secondary,
                 custom_id=custom_id,
                 disabled=True,

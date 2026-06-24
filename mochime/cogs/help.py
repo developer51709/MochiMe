@@ -178,9 +178,9 @@ def build_main_container() -> discord.ui.Container:
     )
 
 
-def build_category_container(key: str) -> discord.ui.Container:
+def build_category_container(key: str, loader: "EmojiLoader | None" = None) -> discord.ui.Container:
     cat = CATEGORIES[key]
-    sparkle = "✨"
+    sparkle = loader.get("sparkle") if loader else "✨"
 
     cmd_lines = "\n".join(
         f"**{cmd}**\n{desc}" for cmd, desc in cat["commands"]
@@ -229,7 +229,8 @@ class Help(commands.Cog):
         if not values or values[0] not in CATEGORIES:
             return
 
-        container = build_category_container(values[0])
+        loader = self._loader()
+        container = build_category_container(values[0], loader=loader)
         lv = discord.ui.LayoutView()
         lv.add_item(container)
         await interaction.response.edit_message(view=lv)
@@ -302,7 +303,7 @@ class Help(commands.Cog):
                         f"?client_id={self.bot.application_id}"
                         f"&scope=bot+applications.commands"
                     ),
-                    emoji="🌸",
+                    emoji=loader.get("flower"),
                 ),
             ),
             accent_color=discord.Color(config.PASTEL_PURPLE),
