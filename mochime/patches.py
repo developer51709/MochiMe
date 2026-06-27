@@ -5,19 +5,34 @@ Applied once in bot.py before any cog is loaded.
 
 Patches
   1. CommandTree.add_command    — context-menu limit 5 → 12 (Discord's real limit)
-  2. discord.ui.FileInput       — Discord's native file-upload modal component
-                                   (component type 11; not yet in discord.py).
-                                   After on_submit, read .attachment for the
-                                   uploaded file proxy (url, filename, etc.).
+  2. discord.ui.FileInput       — Discord's native file-upload modal component.
+                                   Per the Discord API docs, a file-upload field
+                                   inside a modal is serialised as a LABEL wrapper
+                                   (type 18) whose "component" key holds the inner
+                                   FILE_UPLOAD object (type 19).  After on_submit,
+                                   read .attachment (or .attachments for multi)
+                                   for the uploaded file proxy (url, filename, …).
 
 Implementation note for FileInput
 ───────────────────────────────────
-discord.py 2.7.x already routes unknown component types through the normal
-_refresh → item._handle_submit(interaction, component, resolved) pipeline
-(anything that isn't an action-row type 1 or container type 18 falls through
-to the else-branch that matches by custom_id).  So no patching of Modal
-internals is required — FileInput just implements _handle_submit to pull the
-attachment out of interaction.data["resolved"]["attachments"].
+Discord API modal component structure (from official docs):
+  {
+    "type": 18,            // ComponentType.LABEL — the outer wrapper
+    "label": "...",
+    "description": "...",  // optional
+    "component": {
+      "type": 19,          // ComponentType.FILE_UPLOAD — the inner picker
+      "custom_id": "...",
+      "min_values": 1,
+      "max_values": 1,
+      "required": true
+    }
+  }
+
+discord.py 2.7.x routes unknown component types through the normal
+_refresh → item._handle_submit(interaction, component, resolved) pipeline,
+matching items by custom_id.  So we only need to implement _handle_submit
+to pull attachments out of interaction.data["resolved"]["attachments"].
 """
 from __future__ import annotations
 
@@ -29,9 +44,10 @@ log = console.get_logger("mochime.patches")
 
 DISCORD_REAL_LIMIT = 12
 
-# Component type Discord uses for file-upload fields inside modals.
-# Not yet present in discord.py's ComponentType enum as of 2.7.x.
-_FILE_INPUT_TYPE: int = 11
+# Component types for Discord's file-upload modal support.
+# Neither is present in discord.py's ComponentType enum as of 2.7.x.
+_LABEL_TYPE: int       = 18   # ComponentType.LABEL  — outer wrapper
+_FILE_UPLOAD_TYPE: int = 19   # ComponentType.FILE_UPLOAD — inner picker
 
 
 # ─── patch 1: context-menu limit ──────────────────────────────────────────────
@@ -150,26 +166,49 @@ class FileInput(discord.ui.TextInput):
     discord.py does not yet implement this component; we patch it in.
 
     Drop-in for discord.ui.TextInput in Modal class bodies.  After on_submit
-    fires, read .attachment for the uploaded file.
+    fires, read .attachment (single) or .attachments (list) for uploaded files.
+
+    Serialised per the official Discord API docs as a LABEL wrapper (type 18)
+    containing a FILE_UPLOAD component (type 19):
+
+        {
+          "type": 18,
+          "label": "...",
+          "description": "...",   # optional
+          "component": {
+            "type": 19,
+            "custom_id": "...",
+            "min_values": 1,
+            "max_values": 1,
+            "required": true
+          }
+        }
 
     Parameters
     ----------
-    label:      str  — label shown above the file picker (required)
-    custom_id:  str  — stable ID (auto-generated if omitted)
-    required:   bool — whether the field must be filled before submitting
+    label:       str       — label shown above the file picker (required)
+    description: str|None  — helper text shown below the label (optional)
+    custom_id:   str       — stable ID (auto-generated if omitted)
+    required:    bool      — whether the field must be filled before submitting
+    min_values:  int       — minimum number of files (default 1)
+    max_values:  int       — maximum number of files (default 1)
+    row:         int|None  — row hint (passed to TextInput base, unused by Discord)
 
     Properties
     ----------
-    attachment  — _AttachmentProxy with .url .filename .content_type .size
-                  (and .is_image), or None if the user left the field empty.
+    attachment   — first _AttachmentProxy, or None if nothing was uploaded
+    attachments  — list of all _AttachmentProxy objects (empty list if none)
     """
 
     def __init__(
         self,
         *,
         label: str = "Upload File",
+        description: str | None = None,
         custom_id: str = discord.utils.MISSING,
         required: bool = False,
+        min_values: int = 1,
+        max_values: int = 1,
         row: int | None = None,
     ) -> None:
         super().__init__(
@@ -178,25 +217,41 @@ class FileInput(discord.ui.TextInput):
             required=required,
             row=row,
         )
-        self._attachment: _AttachmentProxy | None = None
+        self._description: str | None = description
+        self._min_values: int = min_values
+        self._max_values: int = max_values
+        self._attachments: list[_AttachmentProxy] = []
 
     # ── component serialisation ────────────────────────────────────────────────
 
     def to_dict(self) -> dict:                              # type: ignore[override]
-        """Return the payload Discord expects for a file-upload field."""
-        return {
-            "type":      _FILE_INPUT_TYPE,
-            "custom_id": self.custom_id,
-            "label":     self.label,
-            "required":  self.required,
+        """
+        Return the payload Discord expects for a file-upload field inside a
+        modal — a LABEL wrapper (type 18) with an inner FILE_UPLOAD (type 19).
+        """
+        inner: dict = {
+            "type":       _FILE_UPLOAD_TYPE,
+            "custom_id":  self.custom_id,
+            "required":   self.required,
+            "min_values": self._min_values,
+            "max_values": self._max_values,
         }
+        outer: dict = {
+            "type":      _LABEL_TYPE,
+            "label":     self.label,
+            "component": inner,
+        }
+        if self._description is not None:
+            outer["description"] = self._description
+        return outer
 
     # ── called by Modal._refresh for every matched component on submission ─────
     #
     # discord.py's Modal._refresh walks submitted components and for any type
     # that isn't an action-row (1) or container (18) it finds the item by
     # custom_id and calls item._handle_submit(interaction, component, resolved).
-    # We override that here; no patching of Modal internals required.
+    # The submitted value for a FILE_UPLOAD is the attachment ID (or a list of
+    # IDs for multi-upload), resolved via interaction.data["resolved"]["attachments"].
 
     def _handle_submit(
         self,
@@ -204,26 +259,35 @@ class FileInput(discord.ui.TextInput):
         data: dict,
         resolved: dict,
     ) -> None:
-        self._attachment = None
-        attachment_id = data.get("value")
-        if not attachment_id:
-            return
+        self._attachments = []
         raw_resolved = (interaction.data or {}).get("resolved") or {}
         raw_attachments: dict = raw_resolved.get("attachments") or {}
-        raw = raw_attachments.get(str(attachment_id))
-        if raw:
-            self._attachment = _AttachmentProxy(raw)
+
+        # "value" may be a single ID string or a list of ID strings
+        value = data.get("value") or data.get("values") or []
+        if isinstance(value, str):
+            value = [value]
+
+        for attachment_id in value:
+            raw = raw_attachments.get(str(attachment_id))
+            if raw:
+                self._attachments.append(_AttachmentProxy(raw))
 
     # ── public API ─────────────────────────────────────────────────────────────
 
     @property
     def attachment(self) -> _AttachmentProxy | None:
-        """The uploaded file, or None if the user left this optional field empty."""
-        return self._attachment
+        """The first uploaded file, or None if the user left this optional field empty."""
+        return self._attachments[0] if self._attachments else None
+
+    @property
+    def attachments(self) -> list[_AttachmentProxy]:
+        """All uploaded files as a list (empty if none uploaded)."""
+        return list(self._attachments)
 
     @property                                               # type: ignore[override]
     def value(self) -> str:
-        """Always empty — use .attachment instead."""
+        """Always empty — use .attachment / .attachments instead."""
         return ""
 
 
@@ -243,6 +307,7 @@ def apply_all() -> None:
         log.info("Context-menu limit patch not needed (already patched or not required)")
 
     log.info(
-        "discord.ui.FileInput registered — component type %d, _handle_submit override",
-        _FILE_INPUT_TYPE,
+        "discord.ui.FileInput registered — LABEL wrapper type %d, FILE_UPLOAD inner type %d",
+        _LABEL_TYPE,
+        _FILE_UPLOAD_TYPE,
     )
