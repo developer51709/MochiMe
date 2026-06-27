@@ -160,7 +160,7 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
         attachment = self.image_file.attachment
 
         # If something was uploaded but it isn't an image, reject it.
-        if attachment and not attachment.is_image:
+        if attachment and not (attachment.content_type or "").startswith("image/"):
             await interaction.followup.send(
                 "⚠️ That file doesn't look like an image.\n"
                 "Please attach a PNG, JPG, GIF, or WebP file and try again.",
