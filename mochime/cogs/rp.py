@@ -331,7 +331,7 @@ def _build_rp_container(
     footer = f"{ribbon} *+1 {action} added to stats!*"
 
     children: list[discord.ui.Component] = [
-        discord.ui.TextDisplay(f"## {icon} {action.title()} {sparkle}\n\n{text}"),
+        discord.ui.TextDisplay(f"## {icon} {action.title()}\n\n{text}"),
     ]
 
     if gif_url:

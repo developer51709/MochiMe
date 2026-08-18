@@ -188,25 +188,12 @@ class WelcomeSetupModal(discord.ui.Modal, title="Welcome Message Setup"):
         guild  = self.bot.get_guild(int(self.guild_id))
         member = interaction.user
 
-        if guild and isinstance(member, discord.Member):
-            card = _build_welcome_card(
-                member, guild, title, message, img or None, color, loader
+        preview_children = [
+            discord.ui.TextDisplay(
+                f"{check} **Welcome message saved!**\n"
+                "Use `welcometest` in your server to preview it."
             )
-            preview_children: list = [
-                discord.ui.TextDisplay(
-                    f"{check} **Welcome message saved!**\n"
-                    "-# Here's a preview of what new members will see:"
-                ),
-                discord.ui.Separator(),
-                card,
-            ]
-        else:
-            preview_children = [
-                discord.ui.TextDisplay(
-                    f"{check} **Welcome message saved!**\n"
-                    "Use `welcometest` in your server to preview it."
-                )
-            ]
+        ]
 
         info = discord.ui.Container(
             *preview_children,
@@ -501,6 +488,9 @@ class Welcome(commands.Cog):
     @commands.guild_only()
     @commands.has_permissions(manage_guild=True)
     async def welcometest(self, ctx: commands.Context) -> None:
+        await interaction.response.defer(ephemeral=True)
+        if not ctx.guild:
+            return await interaction.followup.send_message("This command must be used in a guild!")
         assert ctx.guild
         assert isinstance(ctx.author, discord.Member)
 
@@ -527,10 +517,11 @@ class Welcome(commands.Cog):
         wrapper = discord.ui.Container(
             discord.ui.TextDisplay(f"-# Preview mode — {status_line}"),
             discord.ui.Separator(),
-            card,
             accent_color=discord.Color(config.PASTEL_PURPLE),
         )
-        await ctx.send(view=_cv2(wrapper))
+        card.add_item(wrapper)
+        await ctx.send(view=card)
+        await interaction.followup.send_message("Sent!", ephemeral=True)
 
     # ── /welcome toggle ───────────────────────────────────────────────────────
 
