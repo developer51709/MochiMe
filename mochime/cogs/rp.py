@@ -286,7 +286,13 @@ _CONTEXTS = app_commands.allowed_contexts(guilds=True, dms=True, private_channel
 
 async def _fetch_gif(action: str) -> str | None:
     nekos_action = _NEKOS_ACTION_MAP.get(action, action)
-    async with aiohttp.ClientSession() as session:
+
+    # User-Agent is required by the nekos.best API
+    headers = {
+        "User-Agent": "MochiMe/1.0.0 (Contact: developer51709@proton.me)"
+    }
+
+    async with aiohttp.ClientSession(headers=headers) as session:
         try:
             url = NEKOS_BEST_BASE.format(action=nekos_action)
             async with session.get(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
